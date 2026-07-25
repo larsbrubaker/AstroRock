@@ -27,6 +27,7 @@ use crate::bombers::{Bombers, BOMBER_RADAR_COLOR};
 use crate::collide::{self, CollideCtx};
 use crate::events::Events;
 use crate::explosion::Explosions;
+use crate::fastdeaths::{FastDeaths, FAST_DEATH_RADAR_COLOR};
 use crate::frame::{BlitMode, Frame};
 use crate::gloops::Gloops;
 use crate::heartbeat::HeartBeat;
@@ -37,6 +38,7 @@ use crate::radar::Radar;
 use crate::rand::Rand;
 use crate::rect::Rect;
 use crate::rocks::Rocks;
+use crate::spawnfx::{CompletedSpawn, SpawnFx, SpawnKind};
 use crate::spikeballs::{SpikeBalls, SPIKEBALL_RADAR_COLOR};
 use crate::thrust::Thrust;
 use crate::virtual_frame::VirtualFrame;
@@ -83,6 +85,8 @@ pub struct TitleScreen {
     hks: Hks,
     bombers: Bombers,
     spikeballs: SpikeBalls,
+    fastdeaths: FastDeaths,
+    spawnfx: SpawnFx,
     explosions: Explosions,
     events: Events,
     net_rand: Rand,
@@ -135,6 +139,8 @@ impl TitleScreen {
             hks: Hks::new(),
             bombers: Bombers::new(),
             spikeballs: SpikeBalls::new(),
+            fastdeaths: FastDeaths::new(),
+            spawnfx: SpawnFx::new(),
             explosions: Explosions::new(),
             events: Events::new(),
             net_rand,
@@ -177,6 +183,8 @@ impl TitleScreen {
         self.hks.reset(self.level, &mut self.net_rand);
         self.bombers.reset(self.level, &mut self.net_rand);
         self.spikeballs.reset(self.level, &mut self.net_rand);
+        self.fastdeaths.reset(self.level, &mut self.net_rand);
+        self.spawnfx = SpawnFx::new();
     }
 
     /// Respawn after death, lives permitting (Enter while dead).
@@ -215,8 +223,26 @@ impl TitleScreen {
 
                     self.rocks.update(&clip, &mut self.net_rand);
                     self.explosions.update(&clip, &mut self.net_rand);
+                    // UpdateAll order: spawn effects, Gloops,
+                    // SpikeBalls, HKs, Bombers, FastDeaths.
+                    if let Some(CompletedSpawn {
+                        kind: SpawnKind::FastDeath,
+                        x,
+                        y,
+                        cur_frame,
+                    }) = self.spawnfx.update(&mut self.net_rand)
+                    {
+                        self.fastdeaths.spawn_one(x, y, cur_frame);
+                    }
                     self.gloops
                         .update(&clip, &mut self.net_rand, &self.world, &self.ship.sprite);
+                    self.spikeballs.update(
+                        &clip,
+                        &mut self.net_rand,
+                        &self.world,
+                        &mut self.explosions,
+                        &mut self.events,
+                    );
                     self.hks.update(
                         &clip,
                         &mut self.net_rand,
@@ -232,12 +258,12 @@ impl TitleScreen {
                         &mut self.explosions,
                         &mut self.events,
                     );
-                    self.spikeballs.update(
+                    self.fastdeaths.update(
                         &clip,
                         &mut self.net_rand,
                         &self.world,
-                        &mut self.explosions,
-                        &mut self.events,
+                        &self.ship.sprite,
+                        &mut self.spawnfx,
                     );
 
                     // PlayersCollideObject order: Rocks first, then
@@ -256,10 +282,24 @@ impl TitleScreen {
                         if collide::player_vs_gloops(&mut self.ship, &mut self.gloops, &mut ctx) {
                             self.local_player_dead = true;
                         }
+                        if collide::player_vs_spikeballs(
+                            &mut self.ship,
+                            &mut self.spikeballs,
+                            &mut ctx,
+                        ) {
+                            self.local_player_dead = true;
+                        }
                         if collide::player_vs_hks(&mut self.ship, &mut self.hks, &mut ctx) {
                             self.local_player_dead = true;
                         }
                         if collide::player_vs_bombers(&mut self.ship, &mut self.bombers, &mut ctx) {
+                            self.local_player_dead = true;
+                        }
+                        if collide::player_vs_fastdeaths(
+                            &mut self.ship,
+                            &mut self.fastdeaths,
+                            &mut ctx,
+                        ) {
                             self.local_player_dead = true;
                         }
                     }
@@ -327,6 +367,13 @@ impl TitleScreen {
             .draw(&self.world, &mut self.screen, &mut self.local_rand);
         self.spikeballs
             .draw(&self.world, &mut self.screen, &mut self.local_rand);
+        self.fastdeaths.draw(&self.world, &mut self.screen);
+        self.spawnfx.draw(
+            &self.world,
+            &mut self.screen,
+            &mut self.radar,
+            &mut self.local_rand,
+        );
 
         match self.state {
             Screen::Attract => {
@@ -380,6 +427,13 @@ impl TitleScreen {
                             &self.world,
                         );
                     }
+                }
+                for i in 0..self.fastdeaths.pool().len() {
+                    self.radar.plot(
+                        &self.fastdeaths.pool()[i],
+                        FAST_DEATH_RADAR_COLOR,
+                        &self.world,
+                    );
                 }
                 self.radar.plot(&self.ship.sprite, 160, &self.world);
                 self.radar

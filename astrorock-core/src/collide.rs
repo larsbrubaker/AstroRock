@@ -10,6 +10,7 @@
 use crate::bombers::{Bombers, BOMBER_COLLIDE_DAMAGE};
 use crate::events::Events;
 use crate::explosion::Explosions;
+use crate::fastdeaths::{FastDeaths, FAST_DEATH_COLLIDE_DAMAGE};
 use crate::gloops::{Gloops, GLOOP_COLLIDE_DAMAGE};
 use crate::hks::{Hks, HK_COLLIDE_DAMAGE};
 use crate::pship::PlayerShip;
@@ -623,6 +624,79 @@ pub fn player_vs_spikeballs(
                 ctx.explosions,
                 ctx.events,
             );
+            ship.add_score(score);
+        }
+    }
+
+    died
+}
+
+/// `PlayersCollideObject(&FastDeaths, 1)`. Returns true if the ship
+/// died.
+pub fn player_vs_fastdeaths(
+    ship: &mut PlayerShip,
+    fastdeaths: &mut FastDeaths,
+    ctx: &mut CollideCtx,
+) -> bool {
+    let mut died = false;
+
+    if ship.sprite.visible {
+        let shield = ship.shield_on;
+        let dmg_dealt = if shield {
+            SHIP_SHIELD_DAMAGE
+        } else {
+            SHIP_COLLIDE_DAMAGE
+        };
+        for i in 0..fastdeaths.pool().len() {
+            let hit = {
+                let f = &fastdeaths.pool()[i];
+                f.visible && f.collide_sprite(&ship.sprite, &ctx.clip)
+            };
+            if hit {
+                let score = fastdeaths.damage(i, dmg_dealt, ctx.world, ctx.explosions, ctx.events);
+                ship.add_score(score);
+                if !shield {
+                    if damage_player(ship, FAST_DEATH_COLLIDE_DAMAGE, ctx) {
+                        died = true;
+                    }
+                    if !ship.sprite.visible {
+                        return died;
+                    }
+                }
+            }
+        }
+    }
+
+    let shot_damage = ship.shots[ship.cur_shots].damage;
+    for fi in 0..fastdeaths.pool().len() {
+        for ps in 0..15usize {
+            let hit = {
+                let f = &fastdeaths.pool()[fi];
+                let player_shot = ship.shots[ship.cur_shots].iter().nth(ps).expect("pool");
+                f.visible && player_shot.visible && f.collide_sprite(player_shot, &ctx.clip)
+            };
+            if hit {
+                let score =
+                    fastdeaths.damage(fi, shot_damage, ctx.world, ctx.explosions, ctx.events);
+                ship.add_score(score);
+                let cur = ship.cur_shots;
+                ship.shots[cur].hide(ps);
+            }
+        }
+    }
+
+    let bomb_damage = ship.bombs.damage;
+    for fi in 0..fastdeaths.pool().len() {
+        let hit = {
+            let f = &fastdeaths.pool()[fi];
+            f.visible
+                && ship
+                    .bombs
+                    .iter()
+                    .any(|pb| pb.visible && f.collide_sprite(pb, &ctx.clip))
+        };
+        if hit {
+            let score = fastdeaths.damage(fi, bomb_damage, ctx.world, ctx.explosions, ctx.events);
             ship.add_score(score);
         }
     }
