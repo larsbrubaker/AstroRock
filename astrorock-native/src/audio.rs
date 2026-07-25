@@ -39,7 +39,38 @@ pub struct RodioAudio {
 impl RodioAudio {
     /// `None` when no audio device is available (the game runs silent).
     pub fn new() -> Option<Self> {
+        if std::env::var_os("ASTROROCK_AUDIO").is_some() {
+            // Diagnostic: what does cpal think the default device is?
+            use rodio::cpal::traits::{DeviceTrait, HostTrait};
+            let host = rodio::cpal::default_host();
+            match host.default_output_device() {
+                Some(dev) => {
+                    eprintln!(
+                        "audio: default device = {:?}",
+                        dev.name().unwrap_or_else(|_| "<unnamed>".into())
+                    );
+                    if let Ok(cfg) = dev.default_output_config() {
+                        eprintln!("audio: default config = {cfg:?}");
+                    }
+                }
+                None => eprintln!("audio: NO default output device"),
+            }
+        }
         let (stream, handle) = OutputStream::try_default().ok()?;
+        if std::env::var_os("ASTROROCK_AUDIO").is_some() {
+            // A 2s sine straight into the mixer: if this is inaudible,
+            // the problem is below rodio (cpal/WASAPI), not our
+            // decoders or sink plumbing.
+            use rodio::source::SineWave;
+            use std::time::Duration;
+            let beep = SineWave::new(440.0)
+                .take_duration(Duration::from_secs(2))
+                .amplify(0.20);
+            match handle.play_raw(beep.convert_samples()) {
+                Ok(()) => eprintln!("audio: diagnostic beep queued"),
+                Err(err) => eprintln!("audio: diagnostic beep FAILED: {err}"),
+            }
+        }
         let mut buffers = HashMap::new();
         for &id in SfxId::all() {
             match Decoder::new(Cursor::new(id.bytes())) {
@@ -132,7 +163,18 @@ impl AudioSink for RodioAudio {
             let path = dir.join(format!("{}.mp3", MUSIC_TRACKS[self.music_track]));
             self.music_track = (self.music_track + 1) % MUSIC_TRACKS.len();
             match std::fs::read(&path).map(|bytes| Decoder::new(Cursor::new(bytes))) {
-                Ok(Ok(decoder)) => sink.append(decoder),
+                Ok(Ok(decoder)) => {
+                    if std::env::var_os("ASTROROCK_AUDIO").is_some() {
+                        eprintln!(
+                            "audio: queueing {} (sink len {}, vol {}, paused {})",
+                            path.display(),
+                            sink.len(),
+                            sink.volume(),
+                            sink.is_paused()
+                        );
+                    }
+                    sink.append(decoder)
+                }
                 Ok(Err(err)) => {
                     eprintln!("audio: music decode {} failed: {err}", path.display());
                     self.music_dir = MusicDir::Missing;

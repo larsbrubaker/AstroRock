@@ -17,6 +17,11 @@ jobs:
       - name: Clone agg-gui sibling
         run: git clone --depth 1 https://github.com/larsbrubaker/agg-gui.git ../agg-gui
 
+      # rodio (astrorock-native) pulls in alsa-sys on Linux, which
+      # needs the ALSA headers at build time.
+      - name: Install ALSA dev headers
+        run: sudo apt-get update && sudo apt-get install -y libasound2-dev
+
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:

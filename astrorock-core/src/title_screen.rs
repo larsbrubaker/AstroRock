@@ -11,11 +11,10 @@
 //!   order (rock takes the collider's damage first, then the collider
 //!   takes the rock class's damage).
 //!
-//! Keys (stand-ins for the original's remappable `Astro.cfg` bindings):
-//! arrows rotate/thrust, Space fires, S shields, B bombs, Enter
-//! starts/respawns.
+//! Keys route through `input.rs` (the shipped `Astro.cfg` defaults plus
+//! classic alternates); Enter starts/respawns. The themed surround and
+//! its MUSIC/SOUND toggles live in `chrome.rs`.
 
-use agg_gui::color::Color;
 use agg_gui::draw_ctx::DrawCtx;
 use agg_gui::event::{Event, EventResult, Key};
 use agg_gui::geometry::{Rect as GuiRect, Size};
@@ -25,6 +24,7 @@ use web_time::Instant;
 use crate::assets;
 use crate::audio::{self, AudioSink, LoopKind};
 use crate::bombers::{Bombers, BOMBER_RADAR_COLOR};
+use crate::chrome;
 use crate::collide::{self, CollideCtx};
 use crate::events::Events;
 use crate::explosion::Explosions;
@@ -34,6 +34,7 @@ use crate::gloops::Gloops;
 use crate::goodies::Goodies;
 use crate::heartbeat::HeartBeat;
 use crate::hks::{Hks, HK_RADAR_COLOR};
+use crate::input::{self, Binding, KeysHeld};
 use crate::palette::Palette;
 use crate::pship::{PlayerShip, ShipInputs};
 use crate::radar::Radar;
@@ -62,16 +63,6 @@ const NUM_START_SHIPS: u32 = 3;
 enum Screen {
     Attract,
     Playing,
-}
-
-#[derive(Default, Clone, Copy)]
-struct KeysHeld {
-    left: bool,
-    right: bool,
-    thrust: bool,
-    shield: bool,
-    fire: bool,
-    bomb: bool,
 }
 
 pub struct TitleScreen {
@@ -108,6 +99,12 @@ pub struct TitleScreen {
     level: usize,
     local_player_dead: bool,
     audio: Option<Box<dyn AudioSink>>,
+    /// Chrome-bar toggles (music / SFX), hit rects in widget coords —
+    /// recomputed each paint, checked on MouseDown.
+    music_on: bool,
+    sfx_on: bool,
+    music_btn: GuiRect,
+    sfx_btn: GuiRect,
 }
 
 impl TitleScreen {
@@ -173,6 +170,10 @@ impl TitleScreen {
             level: 0,
             local_player_dead: false,
             audio,
+            music_on: true,
+            sfx_on: true,
+            music_btn: GuiRect::default(),
+            sfx_btn: GuiRect::default(),
         }
     }
 
@@ -367,16 +368,26 @@ impl TitleScreen {
             }
         }
         // Turn the frame's events into sound; drain regardless so the
-        // queue can't grow unbounded when running silent.
+        // queue can't grow unbounded when running silent or muted.
         if let Some(sink) = self.audio.as_deref_mut() {
-            audio::dispatch(&mut self.events, sink, &mut self.local_rand);
+            if self.sfx_on {
+                audio::dispatch(&mut self.events, sink, &mut self.local_rand);
+            } else {
+                for _ in self.events.drain() {}
+            }
             let playing = self.state == Screen::Playing;
             let alive = playing && self.ship.sprite.visible;
-            sink.set_loop(LoopKind::Thrust, alive && self.ship.thrusting);
-            sink.set_loop(LoopKind::Shield, alive && self.ship.shield_on);
+            sink.set_loop(
+                LoopKind::Thrust,
+                self.sfx_on && alive && self.ship.thrusting,
+            );
+            sink.set_loop(
+                LoopKind::Shield,
+                self.sfx_on && alive && self.ship.shield_on,
+            );
             // The original starts the music stream at init and restarts
             // it from the main loop forever — attract mode included.
-            sink.set_music(true);
+            sink.set_music(self.music_on);
         } else {
             for _ in self.events.drain() {}
         }
@@ -497,20 +508,21 @@ impl TitleScreen {
         &self.screen
     }
 
+    /// Route a key through the bindings table (input.rs).
     fn set_key(&mut self, key: &Key, down: bool) -> bool {
-        match key {
-            Key::ArrowLeft => self.keys.left = down,
-            Key::ArrowRight => self.keys.right = down,
-            Key::ArrowUp => self.keys.thrust = down,
-            Key::Char(' ') => self.keys.fire = down,
-            Key::Char('s') | Key::Char('S') => self.keys.shield = down,
-            Key::Char('b') | Key::Char('B') => self.keys.bomb = down,
-            Key::Enter => {
+        match input::binding(key) {
+            Some(Binding::Left) => self.keys.left = down,
+            Some(Binding::Right) => self.keys.right = down,
+            Some(Binding::Thrust) => self.keys.thrust = down,
+            Some(Binding::Fire) => self.keys.fire = down,
+            Some(Binding::Shield) => self.keys.shield = down,
+            Some(Binding::Bomb) => self.keys.bomb = down,
+            Some(Binding::Start) => {
                 if down {
                     self.enter_pressed = true;
                 }
             }
-            _ => return false,
+            None => return false,
         }
         true
     }
@@ -563,18 +575,14 @@ impl Widget for TitleScreen {
         agg_gui::animation::request_draw();
         self.palette.frame_to_rgba(&self.screen, &mut self.rgba);
 
-        // Letterbox: aspect-fit the 640x480 game surface in the window.
+        // Window chrome (chrome.rs): backdrop, control bar, buttons,
+        // and the frame; it returns where the game surface goes.
         let (w, h) = (self.bounds.width, self.bounds.height);
-        ctx.set_fill_color(Color::from_rgb8(0, 0, 0));
-        ctx.begin_path();
-        ctx.rect(0.0, 0.0, w, h);
-        ctx.fill();
+        let layout = chrome::paint(ctx, w, h, self.music_on, self.sfx_on);
+        self.music_btn = layout.music_btn;
+        self.sfx_btn = layout.sfx_btn;
+        let (dx, dy, dw, dh) = layout.game;
 
-        let scale = (w / SCREEN_W as f64).min(h / SCREEN_H as f64);
-        let dw = SCREEN_W as f64 * scale;
-        let dh = SCREEN_H as f64 * scale;
-        let dx = (w - dw) * 0.5;
-        let dy = (h - dh) * 0.5;
         // A fresh Arc every frame, deliberately: the slice variant's
         // texture cache keys on pointer + head/tail bytes, and a reused
         // buffer whose corners stay black collides forever — the screen
@@ -604,6 +612,17 @@ impl Widget for TitleScreen {
             }
             Event::KeyUp { key, .. } => {
                 if self.set_key(key, false) {
+                    EventResult::Consumed
+                } else {
+                    EventResult::Ignored
+                }
+            }
+            Event::MouseDown { pos, .. } => {
+                if chrome::hit(&self.music_btn, pos.x, pos.y) {
+                    self.music_on = !self.music_on;
+                    EventResult::Consumed
+                } else if chrome::hit(&self.sfx_btn, pos.x, pos.y) {
+                    self.sfx_on = !self.sfx_on;
                     EventResult::Consumed
                 } else {
                     EventResult::Ignored
@@ -676,6 +695,27 @@ mod tests {
     }
 
     #[test]
+    fn chrome_buttons_toggle_audio_flags() {
+        use agg_gui::event::MouseButton;
+        use agg_gui::geometry::Point;
+        let mut t = TitleScreen::new();
+        t.music_btn = GuiRect::new(10.0, 10.0, 90.0, 26.0);
+        t.sfx_btn = GuiRect::new(110.0, 10.0, 90.0, 26.0);
+        assert!(t.music_on && t.sfx_on);
+        let click = |x: f64, y: f64| Event::MouseDown {
+            pos: Point { x, y },
+            button: MouseButton::Left,
+            modifiers: Default::default(),
+        };
+        assert_eq!(t.on_event(&click(50.0, 20.0)), EventResult::Consumed);
+        assert!(!t.music_on && t.sfx_on);
+        assert_eq!(t.on_event(&click(150.0, 20.0)), EventResult::Consumed);
+        assert!(!t.music_on && !t.sfx_on);
+        // A click outside both buttons is ignored.
+        assert_eq!(t.on_event(&click(400.0, 20.0)), EventResult::Ignored);
+    }
+
+    #[test]
     fn firing_can_break_rocks_and_score() {
         let mut t = TitleScreen::new();
         t.set_key(&Key::Enter, true);
@@ -691,9 +731,9 @@ mod tests {
             t.ship.sprite.x_delta = 0.0;
             t.ship.sprite.y_delta = 0.0;
             t.ship.sprite.hp = 9999; // survive the ram for this test
-            t.set_key(&Key::Char(' '), true);
+            t.set_key(&Key::Char('m'), true);
             now = step(&mut t, now, 1);
-            t.set_key(&Key::Char(' '), false);
+            t.set_key(&Key::Char('m'), false);
             now = step(&mut t, now, 1);
             if t.rocks.num_med > 0 {
                 break;
