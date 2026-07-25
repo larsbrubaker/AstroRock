@@ -18,8 +18,10 @@ pub const GAME_PAL: &[u8] = include_bytes!("../../assets/palettes/game.pal");
 /// `CPalette::Load(..., PALETTE_REMAP)` which copies SIZE_REMAP bytes).
 pub const TRANSRED_PAL: &[u8] = include_bytes!("../../assets/palettes/transred.pal");
 
-/// `rTeaserBmp` — the ASTROROCK title art (310x294 indexed).
-pub const TEASER_PNG: &[u8] = include_bytes!("../../assets/interfac/teaser.png");
+/// `PRESSENT.BMP` — the "Press Enter" prompt (the shareware teaser
+/// screen is retired; the company, address, and phone number on it are
+/// decades gone).
+pub const PRESS_ENTER_PNG: &[u8] = include_bytes!("../../assets/interfac/pressent.png");
 
 /// `rGloop2Pal` / `rGloop3Pal` — gloop tier recolor remap tables.
 pub const GLOOP2_PAL: &[u8] = include_bytes!("../../assets/palettes/gloop2.pal");
@@ -66,12 +68,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn teaser_decodes_to_indices() {
-        let teaser = frame_from_indexed_png(TEASER_PNG);
-        assert_eq!((teaser.width, teaser.height), (310, 294));
+    fn press_enter_decodes_to_indices() {
+        let art = frame_from_indexed_png(PRESS_ENTER_PNG);
+        assert!(art.width > 0 && art.height > 0);
         assert!(
-            teaser.bits.iter().any(|&b| b != 0),
-            "teaser should have non-transparent pixels"
+            art.bits.iter().any(|&b| b != 0),
+            "press-enter art should have non-transparent pixels"
         );
     }
 

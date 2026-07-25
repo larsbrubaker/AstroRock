@@ -2,9 +2,9 @@
 //!
 //! The widget owning the 640x480 indexed pipeline. Two states:
 //!
-//! - **Attract**: `DrawFrame`'s teaser composition — star field,
-//!   drifting level-1 rocks, the ASTROROCK logo through `RedBlit`.
-//!   Enter starts a game.
+//! - **Attract**: star field, drifting level-1 rocks, and the original
+//!   "Press Enter" art through `RedBlit`. (The shareware teaser/upsell
+//!   screen is retired — Logicware's address and phone are long gone.)
 //! - **Playing**: the ported `UpdateAll`/`DrawPlayField` core — ship
 //!   physics and weapons, rocks with splitting, explosions, radar,
 //!   camera following the ship, collisions in the original handler
@@ -73,7 +73,7 @@ pub struct TitleScreen {
     screen: Frame,
     world: VirtualFrame,
     palette: Palette,
-    teaser: Frame,
+    press_enter: Frame,
     transred: [u8; 256],
     stars: Vec<(i32, i32)>,
     rocks: Rocks,
@@ -123,7 +123,7 @@ impl TitleScreen {
             screen: Frame::new(SCREEN_W, SCREEN_H),
             world,
             palette: assets::game_palette(),
-            teaser: assets::frame_from_indexed_png(assets::TEASER_PNG),
+            press_enter: assets::frame_from_indexed_png(assets::PRESS_ENTER_PNG),
             transred: assets::remap_table(assets::TRANSRED_PAL),
             stars,
             rocks,
@@ -298,13 +298,13 @@ impl TitleScreen {
 
         match self.state {
             Screen::Attract => {
-                // pScreen->Blit(&TeaserFrame, centered, &RedBlit)
-                let teaser_bounds = self.teaser.bounds();
+                // pScreen->Blit(&PressEnterFrame, centered, &RedBlit)
+                let art_bounds = self.press_enter.bounds();
                 self.screen.blit(
-                    &self.teaser,
-                    &teaser_bounds,
-                    SCREEN_W / 2 - self.teaser.width / 2,
-                    SCREEN_H / 2 - self.teaser.height / 2,
+                    &self.press_enter,
+                    &art_bounds,
+                    SCREEN_W / 2 - self.press_enter.width / 2,
+                    SCREEN_H / 2 - self.press_enter.height / 2,
                     BlitMode::RemapDestOn1(&self.transred),
                 );
             }
@@ -407,8 +407,10 @@ impl Widget for TitleScreen {
         let now_ms = self.started.elapsed().as_millis() as u64;
         self.advance(now_ms);
         self.compose();
-        // Keep the loop animating.
-        agg_gui::animation::request_draw_without_invalidation();
+        // Keep the loop animating — content changes every frame, so the
+        // full request_draw (animation.rs: "animation ticks … must call
+        // request_draw").
+        agg_gui::animation::request_draw();
         self.palette.frame_to_rgba(&self.screen, &mut self.rgba);
 
         // Letterbox: aspect-fit the 640x480 game surface in the window.
