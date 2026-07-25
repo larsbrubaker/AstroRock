@@ -25,6 +25,22 @@ fn main() {
             logical_size: (960.0, 720.0),
         },
         app,
-        || {},
+        {
+            // Paint-cadence diagnostic: `ASTROROCK_FPS=1 cargo run` prints
+            // frames-per-second once a second to stderr.
+            let report = std::env::var_os("ASTROROCK_FPS").is_some();
+            let mut frames = 0u32;
+            let mut last = std::time::Instant::now();
+            move || {
+                if report {
+                    frames += 1;
+                    if last.elapsed().as_secs() >= 1 {
+                        eprintln!("fps={frames}");
+                        frames = 0;
+                        last = std::time::Instant::now();
+                    }
+                }
+            }
+        },
     );
 }
