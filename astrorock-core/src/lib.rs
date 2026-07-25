@@ -19,6 +19,9 @@ pub mod heartbeat;
 pub mod palette;
 pub mod rand;
 pub mod rect;
+pub mod sequence;
+pub mod sprite;
+pub mod sprite_list;
 pub mod title_screen;
 pub mod virtual_frame;
 

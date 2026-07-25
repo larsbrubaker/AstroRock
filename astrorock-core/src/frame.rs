@@ -40,6 +40,10 @@ pub enum BlitMode<'a> {
 pub struct Frame {
     pub width: i32,
     pub height: i32,
+    /// `CFrame::HotSpot` — the anchor point subtracted from the draw
+    /// position (sprite frames center on it; plain surfaces keep 0,0).
+    pub hot_x: i32,
+    pub hot_y: i32,
     pub bits: Vec<u8>,
 }
 
@@ -49,6 +53,8 @@ impl Frame {
         Self {
             width,
             height,
+            hot_x: 0,
+            hot_y: 0,
             bits: vec![0; (width * height) as usize],
         }
     }
@@ -58,7 +64,20 @@ impl Frame {
         Self {
             width,
             height,
+            hot_x: 0,
+            hot_y: 0,
             bits,
+        }
+    }
+
+    /// Destination top-left for drawing this frame at (x, y) —
+    /// `CFrame::Blit(pSource, x, y, ...)`'s hotspot math, including the
+    /// mirrored anchor in reverse mode.
+    pub fn dest_top_left(&self, x: i32, y: i32, reverse: bool) -> (i32, i32) {
+        if reverse {
+            (x + self.hot_x - self.width, y - self.hot_y)
+        } else {
+            (x - self.hot_x, y - self.hot_y)
         }
     }
 

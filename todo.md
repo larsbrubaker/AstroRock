@@ -12,16 +12,13 @@ work. If this file ever describes finished work, that's a bug. Use
   `Palette.cpp`) — land with the first consumers (screen fades between
   states; COMBINE_64K users like shields/explosions).
 
-## Phase 4 — Sprite layer
-
-- `FrameSequence` loader (PNG + JSON from Phase 1).
-- `Sprite` port (`sprite.cpp`): CFixed position/delta, frame advance,
-  rotation index, HP, timeout, `CollideOnBits` bit-level collision.
-- `SpriteList` as Vec arena with `do_to_all` / collide callbacks.
-- `GameSystem` trait replacing the `GameObj` function-pointer vtable.
-
 ## Phase 5 — Playable core
 
+- `CSpriteList::Collide` walkers (list-vs-list, list-vs-sprite) with
+  their restart-on-mutation semantics — port with the first callers
+  (rocks/shots callbacks define the handler shapes).
+- `GameSystem` trait replacing the `GameObj` function-pointer vtable —
+  shape it around the first two real systems, not speculatively.
 - `players.cpp`, `pship.cpp` (ship physics, guns, shield, bombs),
   `shots.cpp`, `thrust.cpp`, `rocks.cpp` (big/med/small splitting),
   `Explosion.cpp`, `spawnfx.cpp`.
