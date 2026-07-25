@@ -13,9 +13,13 @@
 //! `todo.md` at the workspace root.
 
 pub mod fixed_trig;
+pub mod frame;
 pub mod heartbeat;
+pub mod palette;
 pub mod rand;
+pub mod rect;
 mod title_screen;
+pub mod virtual_frame;
 
 use std::sync::Arc;
 
