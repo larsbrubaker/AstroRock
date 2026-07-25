@@ -1,0 +1,21 @@
+[package]
+name = "astrorock-native"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Native shell (winit + wgpu) for AstroRock."
+
+[[bin]]
+name = "astrorock-native"
+path = "src/main.rs"
+test = false
+
+[dependencies]
+astrorock-core = { path = "../astrorock-core" }
+agg-gui = { workspace = true, features = ["clipboard"] }
+# The winit event loop, wgpu surface, and input plumbing all live in
+# demo-wgpu's `native_shell` — this crate is only the app-specific glue.
+demo-wgpu = { workspace = true }

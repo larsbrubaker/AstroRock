@@ -1,0 +1,21 @@
+[package]
+name = "astrorock-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Target-agnostic game core for AstroRock (Rust port of the 1997 original)."
+
+[dependencies]
+agg-gui = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+web-time = { workspace = true }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+getrandom = { version = "0.2", features = ["js"] }
+
+[lib]
+crate-type = ["rlib"]

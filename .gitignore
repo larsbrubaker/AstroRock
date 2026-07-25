@@ -1,0 +1,25 @@
+/target
+**/*.rs.bk
+Cargo.lock.bak
+
+node_modules/
+demo/dist
+demo/public/pkg
+demo/bun.lock
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# WASM
+/pkg
+astrorock-wasm/pkg
+
+# Local agent state (agents/skills/launch.json ARE committed)
+.claude/settings.local.json
+.cursor/
