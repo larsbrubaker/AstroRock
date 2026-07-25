@@ -30,6 +30,7 @@ use crate::explosion::Explosions;
 use crate::fastdeaths::{FastDeaths, FAST_DEATH_RADAR_COLOR};
 use crate::frame::{BlitMode, Frame};
 use crate::gloops::Gloops;
+use crate::goodies::Goodies;
 use crate::heartbeat::HeartBeat;
 use crate::hks::{Hks, HK_RADAR_COLOR};
 use crate::palette::Palette;
@@ -87,6 +88,7 @@ pub struct TitleScreen {
     spikeballs: SpikeBalls,
     fastdeaths: FastDeaths,
     spawnfx: SpawnFx,
+    goodies: Goodies,
     explosions: Explosions,
     events: Events,
     net_rand: Rand,
@@ -141,6 +143,7 @@ impl TitleScreen {
             spikeballs: SpikeBalls::new(),
             fastdeaths: FastDeaths::new(),
             spawnfx: SpawnFx::new(),
+            goodies: Goodies::new(),
             explosions: Explosions::new(),
             events: Events::new(),
             net_rand,
@@ -184,6 +187,7 @@ impl TitleScreen {
         self.bombers.reset(self.level, &mut self.net_rand);
         self.spikeballs.reset(self.level, &mut self.net_rand);
         self.fastdeaths.reset(self.level, &mut self.net_rand);
+        self.goodies.reset(self.level, &mut self.net_rand);
         self.spawnfx = SpawnFx::new();
     }
 
@@ -265,6 +269,7 @@ impl TitleScreen {
                         &self.ship.sprite,
                         &mut self.spawnfx,
                     );
+                    self.goodies.update(&clip, &mut self.net_rand);
 
                     // PlayersCollideObject order: Rocks first, then
                     // Gloops (then the rest as they're ported).
@@ -274,6 +279,7 @@ impl TitleScreen {
                             explosions: &mut self.explosions,
                             events: &mut self.events,
                             net_rand: &mut self.net_rand,
+                            goodies: &mut self.goodies,
                             clip,
                         };
                         if collide::player_vs_rocks(&mut self.ship, &mut self.rocks, &mut ctx) {
@@ -303,6 +309,13 @@ impl TitleScreen {
                             self.local_player_dead = true;
                         }
                     }
+                    // PlayersCollideObject(&Goodies, 0) — pickups last.
+                    self.goodies.collide_with_player(
+                        &mut self.ship,
+                        &clip,
+                        &mut self.net_rand,
+                        &mut self.events,
+                    );
 
                     self.ship.update(
                         &clip,
@@ -358,6 +371,7 @@ impl TitleScreen {
         }
 
         self.explosions.draw(&self.world, &mut self.screen);
+        self.goodies.draw(&self.world, &mut self.screen);
         self.rocks.draw(&self.world, &mut self.screen);
         self.gloops
             .draw(&self.world, &mut self.screen, &mut self.local_rand);

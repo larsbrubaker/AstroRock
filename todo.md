@@ -29,12 +29,11 @@ work. If this file ever describes finished work, that's a bug. Use
   with `AstroRock.cpp` line-for-line before demo replay (Phase 9
   depends on it).
 
-## Phase 6 — Enemies + goodies
-
-- `gloops.cpp`, `hk.cpp`, `bomber.cpp`, `SpikeBall.cpp`, `fastdeth.cpp`
-  (each: `SpriteAI` + its extracted cfg), `goodies.cpp` powerups.
-
 ## Phase 7 — Audio
+
+- Spikeball charge whine: looping rSpikeBallChargeSnd with the
+  per-beat rising frequency ramp ((f>>6)+f from 22050) — needs loop +
+  live-frequency support in the AudioPlatform trait.
 
 - `AudioPlatform` trait in core; rodio impl (native), web-sys
   AudioContext impl (wasm).

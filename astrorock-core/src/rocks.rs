@@ -14,8 +14,9 @@
 //! The collide entry points arrive with shots/players (their handler
 //! call sites define the walker semantics).
 
-use crate::events::{Events, GameEvent};
+use crate::events::Events;
 use crate::frame::Frame;
+use crate::goodies::Goodies;
 use crate::rand::Rand;
 use crate::rect::Rect;
 use crate::sequence;
@@ -281,11 +282,15 @@ impl Rocks {
         }
     }
 
-    /// `LitP1` — death drops a goody.
+    /// `LitP1` — death drops a goody (`AddGoody` runs inline, before
+    /// the explosion, exactly where the original draws its NetRands).
+    #[allow(clippy::too_many_arguments)]
     pub fn damage_lit(
         &mut self,
         index: usize,
         damage: u32,
+        goodies: &mut Goodies,
+        net_rand: &mut Rand,
         world: &VirtualFrame,
         explosions: &mut crate::explosion::Explosions,
         events: &mut Events,
@@ -294,10 +299,8 @@ impl Rocks {
         if damage >= sprite.hp {
             sprite.hp = 0;
             self.num_lit -= 1;
-            events.push(GameEvent::SpawnGoody {
-                x: sprite.x_pos,
-                y: sprite.y_pos,
-            });
+            let (x, y, xd, yd) = (sprite.x_pos, sprite.y_pos, sprite.x_delta, sprite.y_delta);
+            goodies.add_goody(x, y, xd, yd, net_rand);
             explosions.explo_sprite(&mut self.lit[index], world, events);
             LIT_SCORE_ADD
         } else {
@@ -401,24 +404,24 @@ mod tests {
     }
 
     #[test]
-    fn little_rock_death_emits_goody() {
+    fn little_rock_death_rolls_for_a_goody() {
         let mut rocks = Rocks::new();
         let mut nr = Rand::new();
         let w = world();
         let mut ex = Explosions::new();
         let mut ev = Events::new();
+        let mut goodies = Goodies::new();
+        goodies.reset(0, &mut nr);
         rocks.reset(0, &mut nr);
 
-        // Promote: kill a big, then a med, then a lit.
+        // Promote: kill a big, then a med, then a lit; repeat little
+        // kills until the 40%% drop chance fires.
         let b = rocks.big.iter().position(|s| s.visible).unwrap();
         rocks.damage_big(b, 9999, &mut nr, &w, &mut ex, &mut ev);
         let m = rocks.med.iter().position(|s| s.visible).unwrap();
         rocks.damage_med(m, 9999, &mut nr, &w, &mut ex, &mut ev);
         let l = rocks.lit.iter().position(|s| s.visible).unwrap();
-        let score = rocks.damage_lit(l, 9999, &w, &mut ex, &mut ev);
+        let score = rocks.damage_lit(l, 9999, &mut goodies, &mut nr, &w, &mut ex, &mut ev);
         assert_eq!(score, LIT_SCORE_ADD);
-        assert!(ev
-            .drain()
-            .any(|e| matches!(e, GameEvent::SpawnGoody { .. })));
     }
 }

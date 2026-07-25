@@ -22,6 +22,7 @@ pub mod fastdeaths;
 pub mod fixed_trig;
 pub mod frame;
 pub mod gloops;
+pub mod goodies;
 pub mod heartbeat;
 pub mod hks;
 pub mod palette;

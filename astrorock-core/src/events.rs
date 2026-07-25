@@ -7,6 +7,7 @@
 //! not yet ported consume theirs when they land. Emission order is
 //! deterministic (it follows the original call order exactly).
 
+use crate::goodies::GoodyKind;
 use crate::shots::ShotTier;
 
 /// One frame's side effects, in emission order.
@@ -23,8 +24,8 @@ pub enum GameEvent {
     SfxBombFire,
     /// Weapon switch completed (`pChangeGunSound`).
     SfxChangeGun,
-    /// `AddGoody(sprite)` — a little rock died; goodies system decides.
-    SpawnGoody { x: f32, y: f32 },
+    /// `GetGoody` picked up (the pickup jingle / voice line).
+    GoodyCollected { kind: GoodyKind },
 }
 
 #[derive(Default)]
@@ -63,13 +64,13 @@ mod tests {
     fn drains_in_emission_order() {
         let mut ev = Events::new();
         ev.push(GameEvent::SfxMedExplosion { pan: -10 });
-        ev.push(GameEvent::SpawnGoody { x: 1.0, y: 2.0 });
+        ev.push(GameEvent::SfxBombFire);
         let all: Vec<_> = ev.drain().collect();
         assert_eq!(
             all,
             vec![
                 GameEvent::SfxMedExplosion { pan: -10 },
-                GameEvent::SpawnGoody { x: 1.0, y: 2.0 }
+                GameEvent::SfxBombFire
             ]
         );
         assert!(ev.is_empty());

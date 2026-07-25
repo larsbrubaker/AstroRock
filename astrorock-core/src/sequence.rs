@@ -109,6 +109,14 @@ embedded_sequence!(gloop, "gloop");
 embedded_sequence!(bomber, "bomber");
 embedded_sequence!(spkball, "spkball");
 embedded_sequence!(fastdeth, "fastdeth");
+embedded_sequence!(pows, "pows");
+embedded_sequence!(rapid, "rapid");
+embedded_sequence!(health, "health");
+embedded_sequence!(gun01, "gun01");
+embedded_sequence!(gun02, "gun02");
+embedded_sequence!(spred, "spred");
+embedded_sequence!(bombg, "bombg");
+embedded_sequence!(one_up, "1up");
 embedded_sequence!(hk, "hk");
 embedded_sequence!(shothk, "shothk");
 

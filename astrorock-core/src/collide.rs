@@ -12,6 +12,7 @@ use crate::events::Events;
 use crate::explosion::Explosions;
 use crate::fastdeaths::{FastDeaths, FAST_DEATH_COLLIDE_DAMAGE};
 use crate::gloops::{Gloops, GLOOP_COLLIDE_DAMAGE};
+use crate::goodies::Goodies;
 use crate::hks::{Hks, HK_COLLIDE_DAMAGE};
 use crate::pship::PlayerShip;
 use crate::rand::Rand;
@@ -35,6 +36,8 @@ pub struct CollideCtx<'a> {
     pub explosions: &'a mut Explosions,
     pub events: &'a mut Events,
     pub net_rand: &'a mut Rand,
+    /// Little-rock deaths roll goody drops inline (`AddGoody`).
+    pub goodies: &'a mut Goodies,
     pub clip: Rect,
 }
 
@@ -744,6 +747,14 @@ fn damage_rock(
             ctx.explosions,
             ctx.events,
         ),
-        _ => rocks.damage_lit(i, damage, ctx.world, ctx.explosions, ctx.events),
+        _ => rocks.damage_lit(
+            i,
+            damage,
+            ctx.goodies,
+            ctx.net_rand,
+            ctx.world,
+            ctx.explosions,
+            ctx.events,
+        ),
     }
 }
