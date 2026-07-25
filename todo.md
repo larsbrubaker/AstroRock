@@ -7,17 +7,13 @@ work. If this file ever describes finished work, that's a bug. Use
 
 ## Phase 3 — Indexed compositor (remaining)
 
-- Palette fades (`FadeBlit[16]`), gamma, and the runtime translucency
-  LUT build (`MakeTranslucentLookup` + `FindClosestColor` in
-  `Palette.cpp`) — land with the first consumers (screen fades between
-  states; COMBINE_64K users like shields/explosions).
+- Screen fades between states (gamma ramp / `ScreenFadePalette`) and
+  the runtime translucency LUT build (`MakeTranslucentLookup`) —
+  land with the first consumers (state transitions; COMBINE_64K users
+  like shields/explosions).
 
 ## Phase 5 — Playable core (remaining)
 
-- `spawnfx.cpp` — the enemy respawn shimmer (fade-in via `FadeBlit[16]`
-  + LocalRand sparkles). Needs the palette fade tables; port together.
-  (Note: player spawns have no protection in the original either — a
-  rock on the spawn point kills you there too.)
 - `players.cpp` remainder: the full `UpdateAll` ordering (speaker
   sprite, hurt/carnage voice timing via LocalRand, untouched/survival
   bonus flags), `PlayersCollidePlayers` (deferred with net).
@@ -35,8 +31,7 @@ work. If this file ever describes finished work, that's a bug. Use
   live-frequency support on `AudioSink` loops.
 - Mixer policy from `SoundWin95.cpp` where it's audible: pan by screen
   x (`GetPosRelCenter`) on one-shots, `PausedSoundPlayer` delay for
-  goody voice lines, shimmer sound wired to spawnfx (with Phase 5's
-  spawnfx port).
+  goody voice lines.
 - Speaker-sprite music gag (`SkipMusic` in `AstroRock.cpp`): bumping
   the world speaker drops music to 7025 Hz for 90 beats — port with
   the speaker sprite (players.cpp remainder); needs a music-rate

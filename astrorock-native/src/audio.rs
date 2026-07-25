@@ -14,6 +14,14 @@ use astrorock_core::audio::{AudioSink, LoopKind, SfxId, MUSIC_TRACKS};
 use rodio::source::{Buffered, Source};
 use rodio::{Decoder, OutputStream, OutputStreamHandle, Sink};
 
+/// Mix headroom: at full volume, music + a full-scale SFX sums past
+/// 1.0 and the output clamp squashes the music for the duration of
+/// the effect (audible as the soundtrack "ducking"). Keeping the
+/// steady-state music well under the ceiling leaves room for effects
+/// to land on top without clipping.
+const MUSIC_VOLUME: f32 = 0.45;
+const SFX_VOLUME: f32 = 0.85;
+
 type Sfx = Buffered<Decoder<Cursor<&'static [u8]>>>;
 
 /// Where the music mp3s live — probed once, then remembered.
@@ -110,6 +118,7 @@ impl RodioAudio {
 impl AudioSink for RodioAudio {
     fn play(&mut self, sfx: SfxId, _pan: i32) {
         if let (Some(buf), Ok(sink)) = (self.buffers.get(&sfx), Sink::try_new(&self.handle)) {
+            sink.set_volume(SFX_VOLUME);
             sink.append(buf.clone());
             sink.detach();
         }
@@ -118,6 +127,7 @@ impl AudioSink for RodioAudio {
     fn set_loop(&mut self, which: LoopKind, active: bool) {
         let sink = self.loops.entry(which).or_insert_with(|| {
             let sink = Sink::try_new(&self.handle).expect("loop sink");
+            sink.set_volume(SFX_VOLUME);
             if let Ok(decoder) = Decoder::new(Cursor::new(which.bytes())) {
                 sink.append(decoder.buffered().repeat_infinite());
             }
@@ -152,6 +162,9 @@ impl AudioSink for RodioAudio {
         };
         if self.music.is_none() {
             self.music = Sink::try_new(&self.handle).ok();
+            if let Some(sink) = &self.music {
+                sink.set_volume(MUSIC_VOLUME);
+            }
         }
         let Some(sink) = self.music.as_ref() else {
             return;

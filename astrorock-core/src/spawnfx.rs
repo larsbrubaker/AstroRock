@@ -9,12 +9,16 @@
 //! blip flickers. When the countdown ends the owner spawns the object
 //! at the chosen spot.
 //!
-//! The fade-in of the object art itself (`FadeBlit[SpawnDuration/2]`)
-//! needs the palette fade tables — it lands with them (todo.md).
+//! The incoming object's art fades in over the final `NUMFADES*2`
+//! beats through `FadeBlit[SpawnDuration/2]` (palette.rs).
 
+use crate::events::{Events, GameEvent};
 use crate::frame::Frame;
+use crate::palette::{FadeBlits, NUM_FADES};
 use crate::radar::Radar;
 use crate::rand::Rand;
+use crate::sequence;
+use crate::sprite::Sprite;
 use crate::virtual_frame::VirtualFrame;
 
 const SPAWN_DURATION: u32 = 30;
@@ -60,9 +64,17 @@ impl SpawnFx {
     /// `SpawnObj` — start a warp-in if none is running and the target
     /// system has room (`num < max`). Draws the spawn point from
     /// NetRand either way once accepted.
-    pub fn spawn_obj(&mut self, kind: SpawnKind, num: u32, max: u32, net_rand: &mut Rand) {
+    pub fn spawn_obj(
+        &mut self,
+        kind: SpawnKind,
+        num: u32,
+        max: u32,
+        net_rand: &mut Rand,
+        events: &mut Events,
+    ) {
         if self.duration == 0 && num < max {
-            // Shimmer sound starts here (audio phase: rShimmerSnd).
+            // `pShimmerSound->Play()`.
+            events.push(GameEvent::SfxShimmer);
             self.kind = Some(kind);
             self.cur_frame = 0.0;
             self.x = net_rand.rand(2048) as f32;
@@ -100,18 +112,40 @@ impl SpawnFx {
         None
     }
 
-    /// `DrawSpawnEffects` — 90 shimmer pixels around the spawn point
-    /// plus a flickering radar blip; all LocalRand (visual-only).
+    /// `DrawSpawnEffects` — the incoming object fading in through the
+    /// `FadeBlit` table, then 90 shimmer pixels around the spawn point
+    /// plus a flickering radar blip (LocalRand — visual-only).
     pub fn draw(
         &self,
         world: &VirtualFrame,
         screen: &mut Frame,
         radar: &mut Radar,
         local_rand: &mut Rand,
+        fades: &FadeBlits,
     ) {
         if !self.active() {
             return;
         }
+
+        // "fade in the obj for the last NUMFADES frames":
+        // DrawOneFunc(where, x, y, CurFrame, 0, &FadeBlit[Duration/2]).
+        if self.duration < NUM_FADES as u32 * 2 {
+            let seq = match self.kind {
+                Some(SpawnKind::FastDeath) => sequence::fastdeth(),
+                None => unreachable!("active spawn has a kind"),
+            };
+            let frames = seq.num_frames;
+            let mut s = Sprite::new();
+            s.set_sequence(seq);
+            s.x_pos = self.x;
+            s.y_pos = self.y;
+            // `GameObjDrawSprite` wraps the frame before drawing.
+            s.cur_frame = (self.cur_frame as u32 % frames) as f32;
+            s.blit = fades.blit((self.duration / 2) as usize);
+            s.visible = true;
+            s.draw(world, screen);
+        }
+
         for _ in 0..90 {
             let angle = local_rand.rand(360);
             let dist = local_rand.rand(SHIMMER_DIST) as i32 - (SHIMMER_DIST as i32) / 2;
@@ -144,7 +178,8 @@ mod tests {
     fn warp_in_completes_after_thirty_beats() {
         let mut fx = SpawnFx::new();
         let mut nr = Rand::new();
-        fx.spawn_obj(SpawnKind::FastDeath, 0, 3, &mut nr);
+        let mut ev = Events::new();
+        fx.spawn_obj(SpawnKind::FastDeath, 0, 3, &mut nr, &mut ev);
         assert!(fx.active());
 
         let mut done = None;
@@ -163,11 +198,12 @@ mod tests {
     fn full_system_refuses_and_busy_refuses() {
         let mut fx = SpawnFx::new();
         let mut nr = Rand::new();
-        fx.spawn_obj(SpawnKind::FastDeath, 3, 3, &mut nr); // full
+        let mut ev = Events::new();
+        fx.spawn_obj(SpawnKind::FastDeath, 3, 3, &mut nr, &mut ev); // full
         assert!(!fx.active());
-        fx.spawn_obj(SpawnKind::FastDeath, 0, 3, &mut nr);
+        fx.spawn_obj(SpawnKind::FastDeath, 0, 3, &mut nr, &mut ev);
         let x = fx.x;
-        fx.spawn_obj(SpawnKind::FastDeath, 0, 3, &mut nr); // busy — no-op
+        fx.spawn_obj(SpawnKind::FastDeath, 0, 3, &mut nr, &mut ev); // busy — no-op
         assert_eq!(fx.x, x);
     }
 }

@@ -196,6 +196,7 @@ pub fn dispatch(events: &mut Events, sink: &mut dyn AudioSink, local_rand: &mut 
             GameEvent::SfxBombFire => sink.play(SfxId::BombFire, 0),
             GameEvent::SfxChangeGun => sink.play(SfxId::ChangeGun, 0),
             GameEvent::SfxBonus => sink.play(SfxId::Bonus, 0),
+            GameEvent::SfxShimmer => sink.play(SfxId::Shimmer, 0),
             GameEvent::GoodyCollected { kind } => {
                 if local_rand.rand(4) != 0 {
                     sink.play(SfxId::Goody, 0);

@@ -80,6 +80,7 @@ impl Game {
                 &mut self.screen,
                 &mut self.radar,
                 &mut self.local_rand,
+                &self.fades,
             );
         }
 

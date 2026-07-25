@@ -26,6 +26,8 @@ pub enum GameEvent {
     SfxChangeGun,
     /// The intermission bonus blip (`pBonusSound`, rBonusSnd).
     SfxBonus,
+    /// A warp-in started (`pShimmerSound`, rShimmerSnd).
+    SfxShimmer,
     /// `GetGoody` picked up (the pickup jingle / voice line).
     GoodyCollected { kind: GoodyKind },
 }

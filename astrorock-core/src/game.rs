@@ -32,7 +32,7 @@ use crate::heartbeat::HeartBeat;
 use crate::hks::Hks;
 use crate::input::{self, Binding, KeysHeld};
 use crate::intermission::{Intermission, LevelStats};
-use crate::palette::Palette;
+use crate::palette::{FadeBlits, Palette};
 use crate::pship::{PlayerShip, ShipInputs};
 use crate::radar::Radar;
 use crate::rand::Rand;
@@ -71,6 +71,8 @@ pub struct Game {
     pub(crate) screen: Frame,
     pub(crate) world: VirtualFrame,
     pub palette: Palette,
+    /// `FadeBlit[NUMFADES]` — built once from the game palette.
+    pub(crate) fades: FadeBlits,
     pub(crate) press_enter: Frame,
     pub(crate) transred: [u8; 256],
     pub(crate) stars: Vec<(i32, i32)>,
@@ -134,10 +136,14 @@ impl Game {
         let mut rocks = Rocks::new();
         rocks.reset(0, &mut net_rand);
 
+        let palette = assets::game_palette();
+        let fades = FadeBlits::new(&palette);
+
         Self {
             screen: Frame::new(SCREEN_W, SCREEN_H),
             world,
-            palette: assets::game_palette(),
+            palette,
+            fades,
             press_enter: assets::frame_from_indexed_png(assets::PRESS_ENTER_PNG),
             transred: assets::remap_table(assets::TRANSRED_PAL),
             stars,
@@ -341,6 +347,7 @@ impl Game {
             &self.world,
             &self.ship.sprite,
             &mut self.spawnfx,
+            &mut self.events,
         );
         self.goodies.update(&clip, &mut self.net_rand);
 

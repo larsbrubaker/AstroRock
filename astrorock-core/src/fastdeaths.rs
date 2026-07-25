@@ -144,6 +144,7 @@ impl FastDeaths {
         world: &VirtualFrame,
         ship: &Sprite,
         spawnfx: &mut SpawnFx,
+        events: &mut crate::events::Events,
     ) {
         for i in 0..MAX_FAST_DEATHS {
             if !self.pool[i].visible {
@@ -217,6 +218,7 @@ impl FastDeaths {
                 self.num_fast_deaths,
                 self.max_fast_deaths,
                 net_rand,
+                events,
             );
         }
     }
@@ -347,8 +349,10 @@ mod tests {
         // Fast deaths accelerate constantly; once targeted they close
         // distance on a stationary ship.
         let mut closed_in = false;
+        let mut ev = crate::events::Events::new();
         for _ in 0..900 {
-            f.update(&clip, &mut nr, &w, &ship, &mut fx);
+            f.update(&clip, &mut nr, &w, &ship, &mut fx, &mut ev);
+            for _ in ev.drain() {}
             let d = w.find_dist(
                 (f.pool[0].x_pos as i32, f.pool[0].y_pos as i32),
                 (ship.x_pos as i32, ship.y_pos as i32),

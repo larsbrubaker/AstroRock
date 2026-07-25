@@ -31,6 +31,8 @@ web-sys = { version = "0.3", features = [
     "AudioDestinationNode",
     "AudioNode",
     "AudioScheduledSourceNode",
+    "AudioParam",
+    "GainNode",
     "HtmlAudioElement",
     "HtmlMediaElement",
     "BaseAudioContext",

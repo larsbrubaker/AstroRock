@@ -20,14 +20,22 @@ use wasm_bindgen::closure::Closure;
 use wasm_bindgen::{JsCast, JsValue};
 use wasm_bindgen_futures::JsFuture;
 use web_sys::{
-    AudioBuffer, AudioBufferSourceNode, AudioContext, AudioContextState, HtmlAudioElement,
+    AudioBuffer, AudioBufferSourceNode, AudioContext, AudioContextState, GainNode, HtmlAudioElement,
 };
+
+/// Mix headroom: at full volume, music + a full-scale SFX sums past
+/// 1.0 and the destination clamp squashes the music while the effect
+/// plays. Same constants as the native sink.
+const MUSIC_VOLUME: f64 = 0.45;
+const SFX_VOLUME: f32 = 0.85;
 
 type SfxBuffers = Rc<RefCell<HashMap<SfxId, AudioBuffer>>>;
 type LoopBuffers = Rc<RefCell<HashMap<LoopKind, AudioBuffer>>>;
 
 pub struct WebAudio {
     ctx: AudioContext,
+    /// All SFX route through one gain node for mix headroom.
+    sfx_gain: GainNode,
     sfx: SfxBuffers,
     loop_bufs: LoopBuffers,
     active: HashMap<LoopKind, AudioBufferSourceNode>,
@@ -50,6 +58,9 @@ impl WebAudio {
     /// `None` when the browser refuses an `AudioContext` entirely.
     pub fn new() -> Option<Self> {
         let ctx = AudioContext::new().ok()?;
+        let sfx_gain = ctx.create_gain().ok()?;
+        sfx_gain.gain().set_value(SFX_VOLUME);
+        sfx_gain.connect_with_audio_node(&ctx.destination()).ok()?;
         let sfx: SfxBuffers = Rc::new(RefCell::new(HashMap::new()));
         let loop_bufs: LoopBuffers = Rc::new(RefCell::new(HashMap::new()));
 
@@ -80,6 +91,7 @@ impl WebAudio {
 
         let music = HtmlAudioElement::new_with_src(&music_src(0)).ok();
         if let Some(el) = &music {
+            el.set_volume(MUSIC_VOLUME);
             // Advance through MUSIC_TRACKS and wrap — the equivalent of
             // the original's one concatenated stream restarting itself.
             let track = Rc::new(Cell::new(0usize));
@@ -97,6 +109,7 @@ impl WebAudio {
 
         Some(Self {
             ctx,
+            sfx_gain,
             sfx,
             loop_bufs,
             active: HashMap::new(),
@@ -117,7 +130,7 @@ impl WebAudio {
         let node = self.ctx.create_buffer_source().ok()?;
         node.set_buffer(Some(buf));
         node.set_loop(looping);
-        node.connect_with_audio_node(&self.ctx.destination()).ok()?;
+        node.connect_with_audio_node(&self.sfx_gain).ok()?;
         node.start().ok()?;
         Some(node)
     }
