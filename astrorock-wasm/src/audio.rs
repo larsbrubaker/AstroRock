@@ -11,14 +11,17 @@
 //! that starts a game unlocks sound. Pan is accepted but not yet
 //! spatialized (todo.md, same as native).
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use astrorock_core::audio::{AudioSink, LoopKind, SfxId};
+use astrorock_core::audio::{AudioSink, LoopKind, SfxId, MUSIC_TRACKS};
+use wasm_bindgen::closure::Closure;
 use wasm_bindgen::{JsCast, JsValue};
 use wasm_bindgen_futures::JsFuture;
-use web_sys::{AudioBuffer, AudioBufferSourceNode, AudioContext, AudioContextState};
+use web_sys::{
+    AudioBuffer, AudioBufferSourceNode, AudioContext, AudioContextState, HtmlAudioElement,
+};
 
 type SfxBuffers = Rc<RefCell<HashMap<SfxId, AudioBuffer>>>;
 type LoopBuffers = Rc<RefCell<HashMap<LoopKind, AudioBuffer>>>;
@@ -28,6 +31,19 @@ pub struct WebAudio {
     sfx: SfxBuffers,
     loop_bufs: LoopBuffers,
     active: HashMap<LoopKind, AudioBufferSourceNode>,
+    /// The soundtrack streams through a media element (tracks are
+    /// megabytes — never decoded into AudioBuffers). `None` when the
+    /// browser refused the element; the game just runs without music.
+    music: Option<HtmlAudioElement>,
+    /// Reusable no-op rejection handler: `play()` before the autoplay
+    /// gate lifts rejects, and an unhandled rejection spams the
+    /// console every frame.
+    swallow: Closure<dyn FnMut(JsValue)>,
+}
+
+/// Relative to the page, staged by demo/sync-assets.ts.
+fn music_src(track: usize) -> String {
+    format!("music/{}.mp3", MUSIC_TRACKS[track])
 }
 
 impl WebAudio {
@@ -62,11 +78,30 @@ impl WebAudio {
             });
         }
 
+        let music = HtmlAudioElement::new_with_src(&music_src(0)).ok();
+        if let Some(el) = &music {
+            // Advance through MUSIC_TRACKS and wrap — the equivalent of
+            // the original's one concatenated stream restarting itself.
+            let track = Rc::new(Cell::new(0usize));
+            let el2 = el.clone();
+            let on_ended = Closure::<dyn FnMut()>::new(move || {
+                let next = (track.get() + 1) % MUSIC_TRACKS.len();
+                track.set(next);
+                el2.set_src(&music_src(next));
+                let _ = el2.play();
+            });
+            el.set_onended(Some(on_ended.as_ref().unchecked_ref()));
+            // The element lives as long as the app — leak the handler.
+            on_ended.forget();
+        }
+
         Some(Self {
             ctx,
             sfx,
             loop_bufs,
             active: HashMap::new(),
+            music,
+            swallow: Closure::new(|_| {}),
         })
     }
 
@@ -121,6 +156,24 @@ impl AudioSink for WebAudio {
             .and_then(|buf| self.start_source(buf, true));
         if let Some(node) = started {
             self.active.insert(which, node);
+        }
+    }
+
+    fn set_music(&mut self, on: bool) {
+        let Some(el) = &self.music else { return };
+        if !on {
+            if !el.paused() {
+                el.pause().ok();
+            }
+            return;
+        }
+        self.ensure_running();
+        // Media playback obeys the same user-activation rule as the
+        // AudioContext — once the context runs, play() is allowed.
+        if self.ctx.state() == AudioContextState::Running && el.paused() {
+            if let Ok(promise) = el.play() {
+                let _ = promise.catch(&self.swallow);
+            }
         }
     }
 }

@@ -148,6 +148,15 @@ impl LoopKind {
     }
 }
 
+/// The soundtrack, in play order. The original streamed one giant
+/// concatenated PCM file (`Astro.Rck`) end to end and restarted it
+/// whenever it ran out; playing these tracks in sequence and wrapping
+/// reproduces that. NOT embedded (megabytes) — native reads
+/// `assets/music/`, wasm fetches `music/` next to the page.
+pub const MUSIC_TRACKS: &[&str] = &[
+    "track02", "track03", "track04", "track05", "track06", "track07", "track08",
+];
+
 /// What the platform shells implement.
 pub trait AudioSink {
     /// Play a one-shot. `pan` is the original's screen-relative x from
@@ -155,6 +164,11 @@ pub trait AudioSink {
     fn play(&mut self, sfx: SfxId, pan: i32);
     /// Start/stop a loop (idempotent).
     fn set_loop(&mut self, which: LoopKind, active: bool);
+    /// Called every frame with the desired music state. The sink owns
+    /// sequencing through [`MUSIC_TRACKS`] (mirroring the original's
+    /// "restart the stream when it stops" main-loop poll); `on` is the
+    /// original's volume-above-minimum condition.
+    fn set_music(&mut self, on: bool);
 }
 
 /// Drain a frame's events into the sink. `local_rand` drives the
@@ -204,6 +218,7 @@ mod tests {
     struct Recorder {
         plays: Vec<(SfxId, i32)>,
         loops: Vec<(LoopKind, bool)>,
+        music: Vec<bool>,
     }
 
     impl AudioSink for Recorder {
@@ -212,6 +227,9 @@ mod tests {
         }
         fn set_loop(&mut self, which: LoopKind, active: bool) {
             self.loops.push((which, active));
+        }
+        fn set_music(&mut self, on: bool) {
+            self.music.push(on);
         }
     }
 
@@ -257,6 +275,15 @@ mod tests {
             .count();
         assert_eq!(jingles + voices, 40);
         assert!(jingles > voices, "3-in-4 jingle bias");
+    }
+
+    #[test]
+    fn every_music_track_exists_on_disk() {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../assets/music");
+        for stem in MUSIC_TRACKS {
+            let path = dir.join(format!("{stem}.mp3"));
+            assert!(path.is_file(), "missing music track {}", path.display());
+        }
     }
 
     #[test]

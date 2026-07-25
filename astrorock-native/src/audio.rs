@@ -8,12 +8,21 @@
 
 use std::collections::HashMap;
 use std::io::Cursor;
+use std::path::PathBuf;
 
-use astrorock_core::audio::{AudioSink, LoopKind, SfxId};
+use astrorock_core::audio::{AudioSink, LoopKind, SfxId, MUSIC_TRACKS};
 use rodio::source::{Buffered, Source};
 use rodio::{Decoder, OutputStream, OutputStreamHandle, Sink};
 
 type Sfx = Buffered<Decoder<Cursor<&'static [u8]>>>;
+
+/// Where the music mp3s live — probed once, then remembered.
+enum MusicDir {
+    Unprobed,
+    Found(PathBuf),
+    /// Not found (or a track failed): run without music, silently.
+    Missing,
+}
 
 pub struct RodioAudio {
     // Dropping the stream stops all audio — keep it alive.
@@ -21,6 +30,10 @@ pub struct RodioAudio {
     handle: OutputStreamHandle,
     buffers: HashMap<SfxId, Sfx>,
     loops: HashMap<LoopKind, Sink>,
+    music: Option<Sink>,
+    music_dir: MusicDir,
+    /// Next index into [`MUSIC_TRACKS`].
+    music_track: usize,
 }
 
 impl RodioAudio {
@@ -43,7 +56,23 @@ impl RodioAudio {
             handle,
             buffers,
             loops: HashMap::new(),
+            music: None,
+            music_dir: MusicDir::Unprobed,
+            music_track: 0,
         })
+    }
+
+    /// `assets/music/` relative to the cwd (cargo run / cargo dev) or
+    /// to the exe (`target/debug` layout, or shipped next to assets).
+    fn probe_music_dir() -> Option<PathBuf> {
+        let mut candidates = vec![PathBuf::from("assets/music")];
+        if let Ok(exe) = std::env::current_exe() {
+            if let Some(dir) = exe.parent() {
+                candidates.push(dir.join("assets/music"));
+                candidates.push(dir.join("../../assets/music"));
+            }
+        }
+        candidates.into_iter().find(|p| p.is_dir())
     }
 }
 
@@ -69,5 +98,53 @@ impl AudioSink for RodioAudio {
         } else {
             sink.pause();
         }
+    }
+
+    fn set_music(&mut self, on: bool) {
+        if !on {
+            if let Some(sink) = &self.music {
+                sink.pause();
+            }
+            return;
+        }
+        if let MusicDir::Unprobed = self.music_dir {
+            self.music_dir = match Self::probe_music_dir() {
+                Some(dir) => MusicDir::Found(dir),
+                None => {
+                    eprintln!("audio: assets/music not found — running without music");
+                    MusicDir::Missing
+                }
+            };
+        }
+        let MusicDir::Found(dir) = &self.music_dir else {
+            return;
+        };
+        if self.music.is_none() {
+            self.music = Sink::try_new(&self.handle).ok();
+        }
+        let Some(sink) = self.music.as_ref() else {
+            return;
+        };
+        // Keep one track playing and one queued so the wrap from
+        // track08 back to track02 is seamless, like the original's
+        // single concatenated stream.
+        if sink.len() < 2 {
+            let path = dir.join(format!("{}.mp3", MUSIC_TRACKS[self.music_track]));
+            self.music_track = (self.music_track + 1) % MUSIC_TRACKS.len();
+            match std::fs::read(&path).map(|bytes| Decoder::new(Cursor::new(bytes))) {
+                Ok(Ok(decoder)) => sink.append(decoder),
+                Ok(Err(err)) => {
+                    eprintln!("audio: music decode {} failed: {err}", path.display());
+                    self.music_dir = MusicDir::Missing;
+                    return;
+                }
+                Err(err) => {
+                    eprintln!("audio: music read {} failed: {err}", path.display());
+                    self.music_dir = MusicDir::Missing;
+                    return;
+                }
+            }
+        }
+        sink.play();
     }
 }

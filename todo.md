@@ -29,19 +29,21 @@ work. If this file ever describes finished work, that's a bug. Use
   with `AstroRock.cpp` line-for-line before demo replay (Phase 9
   depends on it).
 
-## Phase 7 — Audio
+## Phase 7 — Audio (remaining)
 
 - Spikeball charge whine: looping rSpikeBallChargeSnd with the
-  per-beat rising frequency ramp ((f>>6)+f from 22050) — needs loop +
-  live-frequency support in the AudioPlatform trait.
-
-- `AudioPlatform` trait in core; rodio impl (native), web-sys
-  AudioContext impl (wasm).
-- Mixer policy port from `SoundWin95.cpp`: priorities
-  (OPTIONAL/IMPORTANT/VITAL), max voices, multi-play copy pool,
-  pan/volume/frequency, `PausedSoundPlayer`.
-- Music: per-level mp3 tracks streamed/fetched (replaces the
-  `Astro.Rck` PCM stream of `StreamSoundW95.cpp`).
+  per-beat rising frequency ramp ((f>>6)+f from 22050) — needs
+  live-frequency support on `AudioSink` loops.
+- Mixer policy from `SoundWin95.cpp` where it's audible: pan by screen
+  x (`GetPosRelCenter`) on one-shots, `PausedSoundPlayer` delay for
+  goody voice lines, shimmer sound wired to spawnfx (with Phase 5's
+  spawnfx port).
+- Speaker-sprite music gag (`SkipMusic` in `AstroRock.cpp`): bumping
+  the world speaker drops music to 7025 Hz for 90 beats — port with
+  the speaker sprite (players.cpp remainder); needs a music-rate
+  control on `AudioSink`.
+- Volume/mute controls (M key, sliders) — land with Phase 8 options
+  UI and the settings store.
 
 ## Phase 8 — Faithful bitmap UI
 

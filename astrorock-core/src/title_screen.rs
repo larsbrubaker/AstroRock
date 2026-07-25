@@ -367,6 +367,9 @@ impl TitleScreen {
             let alive = playing && self.ship.sprite.visible;
             sink.set_loop(LoopKind::Thrust, alive && self.ship.thrusting);
             sink.set_loop(LoopKind::Shield, alive && self.ship.shield_on);
+            // The original starts the music stream at init and restarts
+            // it from the main loop forever — attract mode included.
+            sink.set_music(true);
         } else {
             for _ in self.events.drain() {}
         }
