@@ -106,6 +106,7 @@ embedded_sequence!(thrust4, "thrust4");
 embedded_sequence!(explo, "explo");
 embedded_sequence!(bg_explo, "bgexp");
 embedded_sequence!(gloop, "gloop");
+embedded_sequence!(bomber, "bomber");
 embedded_sequence!(hk, "hk");
 embedded_sequence!(shothk, "shothk");
 

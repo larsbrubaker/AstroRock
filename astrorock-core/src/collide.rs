@@ -7,6 +7,7 @@
 //! collider takes the object's contact damage (shields make the ship
 //! deal 1000 and take nothing; shots vanish on hit; bombs sail on).
 
+use crate::bombers::{Bombers, BOMBER_COLLIDE_DAMAGE};
 use crate::events::Events;
 use crate::explosion::Explosions;
 use crate::gloops::{Gloops, GLOOP_COLLIDE_DAMAGE};
@@ -342,6 +343,169 @@ pub fn player_vs_hks(ship: &mut PlayerShip, hks: &mut Hks, ctx: &mut CollideCtx)
             };
             if hit {
                 let score = hks.damage(hi, bomb_damage, ctx.world, ctx.explosions, ctx.events);
+                ship.add_score(score);
+            }
+        }
+    }
+
+    died
+}
+
+/// `PlayersCollideObject(&Bombers, 1)`. Bomber bombs collide before
+/// bomber bodies; the bombs are destructible (`DamageBomb`) and damage
+/// the ship on contact. Returns true if the ship died.
+pub fn player_vs_bombers(
+    ship: &mut PlayerShip,
+    bombers: &mut Bombers,
+    ctx: &mut CollideCtx,
+) -> bool {
+    let mut died = false;
+
+    // Hull pass: bombs first, then bomber bodies.
+    if ship.sprite.visible {
+        let shield = ship.shield_on;
+        let dmg_dealt = if shield {
+            SHIP_SHIELD_DAMAGE
+        } else {
+            SHIP_COLLIDE_DAMAGE
+        };
+        if bombers.engaged() {
+            for pi in 0..bombers.bombs.len() {
+                for bi in 0..bombers.bombs[pi].len() {
+                    let (hit, bomb_damage) = {
+                        let bomb = bombers.bombs[pi].get(bi);
+                        (
+                            bomb.visible && bomb.collide_sprite(&ship.sprite, &ctx.clip),
+                            bombers.bombs[pi].damage,
+                        )
+                    };
+                    if hit {
+                        bombers.bombs[pi].damage_bomb(
+                            bi,
+                            dmg_dealt,
+                            ctx.world,
+                            ctx.explosions,
+                            ctx.events,
+                        );
+                        if !shield {
+                            if damage_player(ship, bomb_damage, ctx) {
+                                died = true;
+                            }
+                            if !ship.sprite.visible {
+                                return died;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if bombers.active() {
+            for i in 0..bombers.pool().len() {
+                let hit = {
+                    let b = &bombers.pool()[i];
+                    b.visible && b.collide_sprite(&ship.sprite, &ctx.clip)
+                };
+                if hit {
+                    let score = bombers.damage(i, dmg_dealt, ctx.world, ctx.explosions, ctx.events);
+                    ship.add_score(score);
+                    if !shield {
+                        if damage_player(ship, BOMBER_COLLIDE_DAMAGE, ctx) {
+                            died = true;
+                        }
+                        if !ship.sprite.visible {
+                            return died;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Player shot pass: shots chip bomber bombs, then bomber bodies.
+    let shot_damage = ship.shots[ship.cur_shots].damage;
+    if bombers.engaged() {
+        for pi in 0..bombers.bombs.len() {
+            for bi in 0..bombers.bombs[pi].len() {
+                for ps in 0..15usize {
+                    let hit = {
+                        let bomb = bombers.bombs[pi].get(bi);
+                        let player_shot = ship.shots[ship.cur_shots].iter().nth(ps).expect("pool");
+                        bomb.visible
+                            && player_shot.visible
+                            && bomb.collide_sprite(player_shot, &ctx.clip)
+                    };
+                    if hit {
+                        bombers.bombs[pi].damage_bomb(
+                            bi,
+                            shot_damage,
+                            ctx.world,
+                            ctx.explosions,
+                            ctx.events,
+                        );
+                        let cur = ship.cur_shots;
+                        ship.shots[cur].hide(ps);
+                    }
+                }
+            }
+        }
+    }
+    if bombers.active() {
+        for i in 0..bombers.pool().len() {
+            for ps in 0..15usize {
+                let hit = {
+                    let b = &bombers.pool()[i];
+                    let player_shot = ship.shots[ship.cur_shots].iter().nth(ps).expect("pool");
+                    b.visible && player_shot.visible && b.collide_sprite(player_shot, &ctx.clip)
+                };
+                if hit {
+                    let score =
+                        bombers.damage(i, shot_damage, ctx.world, ctx.explosions, ctx.events);
+                    ship.add_score(score);
+                    let cur = ship.cur_shots;
+                    ship.shots[cur].hide(ps);
+                }
+            }
+        }
+    }
+
+    // Player bomb pass.
+    let player_bomb_damage = ship.bombs.damage;
+    if bombers.engaged() {
+        for pi in 0..bombers.bombs.len() {
+            for bi in 0..bombers.bombs[pi].len() {
+                let hit = {
+                    let bomb = bombers.bombs[pi].get(bi);
+                    bomb.visible
+                        && ship
+                            .bombs
+                            .iter()
+                            .any(|b| b.visible && bomb.collide_sprite(b, &ctx.clip))
+                };
+                if hit {
+                    bombers.bombs[pi].damage_bomb(
+                        bi,
+                        player_bomb_damage,
+                        ctx.world,
+                        ctx.explosions,
+                        ctx.events,
+                    );
+                }
+            }
+        }
+    }
+    if bombers.active() {
+        for i in 0..bombers.pool().len() {
+            let hit = {
+                let b = &bombers.pool()[i];
+                b.visible
+                    && ship
+                        .bombs
+                        .iter()
+                        .any(|pb| pb.visible && b.collide_sprite(pb, &ctx.clip))
+            };
+            if hit {
+                let score =
+                    bombers.damage(i, player_bomb_damage, ctx.world, ctx.explosions, ctx.events);
                 ship.add_score(score);
             }
         }

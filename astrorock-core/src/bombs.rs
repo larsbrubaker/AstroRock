@@ -110,6 +110,37 @@ impl Bombs {
         self.pool.iter()
     }
 
+    pub fn len(&self) -> usize {
+        self.pool.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.pool.is_empty()
+    }
+
+    pub fn get(&self, index: usize) -> &Sprite {
+        &self.pool[index]
+    }
+
+    /// `DamageBomb` — bomber bombs are destructible; destruction is an
+    /// `ExploSprite` (hide + big explosion). Partial damage just chips.
+    pub fn damage_bomb(
+        &mut self,
+        index: usize,
+        damage: u32,
+        world: &VirtualFrame,
+        explosions: &mut Explosions,
+        events: &mut Events,
+    ) {
+        let bomb = &mut self.pool[index];
+        if damage >= bomb.hp {
+            bomb.hp = 0;
+            explosions.explo_sprite(&mut self.pool[index], world, events);
+        } else {
+            bomb.hp -= damage;
+        }
+    }
+
     /// `CBombsFire` — facing from the shooter's rotation frame.
     pub fn fire(&mut self, who: &Sprite, events: &mut Events) -> bool {
         let (who_x, who_y, who_xd, who_yd) = (who.x_pos, who.y_pos, who.x_delta, who.y_delta);

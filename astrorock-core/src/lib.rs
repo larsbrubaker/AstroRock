@@ -13,6 +13,7 @@
 //! `todo.md` at the workspace root.
 
 pub mod assets;
+pub mod bombers;
 pub mod bombs;
 pub mod collide;
 pub mod events;

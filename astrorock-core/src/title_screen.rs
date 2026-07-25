@@ -23,6 +23,7 @@ use agg_gui::widget::Widget;
 use web_time::Instant;
 
 use crate::assets;
+use crate::bombers::{Bombers, BOMBER_RADAR_COLOR};
 use crate::collide::{self, CollideCtx};
 use crate::events::Events;
 use crate::explosion::Explosions;
@@ -79,6 +80,7 @@ pub struct TitleScreen {
     rocks: Rocks,
     gloops: Gloops,
     hks: Hks,
+    bombers: Bombers,
     explosions: Explosions,
     events: Events,
     net_rand: Rand,
@@ -129,6 +131,7 @@ impl TitleScreen {
             rocks,
             gloops: Gloops::new(),
             hks: Hks::new(),
+            bombers: Bombers::new(),
             explosions: Explosions::new(),
             events: Events::new(),
             net_rand,
@@ -169,6 +172,7 @@ impl TitleScreen {
         self.rocks.reset(self.level, &mut self.net_rand);
         self.gloops.reset(self.level, &mut self.net_rand);
         self.hks.reset(self.level, &mut self.net_rand);
+        self.bombers.reset(self.level, &mut self.net_rand);
     }
 
     /// Respawn after death, lives permitting (Enter while dead).
@@ -216,6 +220,14 @@ impl TitleScreen {
                         &self.ship.sprite,
                         &mut self.events,
                     );
+                    self.bombers.update(
+                        &clip,
+                        &mut self.net_rand,
+                        &self.world,
+                        &self.ship.sprite,
+                        &mut self.explosions,
+                        &mut self.events,
+                    );
 
                     // PlayersCollideObject order: Rocks first, then
                     // Gloops (then the rest as they're ported).
@@ -236,6 +248,9 @@ impl TitleScreen {
                         if collide::player_vs_hks(&mut self.ship, &mut self.hks, &mut ctx) {
                             self.local_player_dead = true;
                         }
+                        if collide::player_vs_bombers(&mut self.ship, &mut self.bombers, &mut ctx) {
+                            self.local_player_dead = true;
+                        }
                     }
 
                     self.ship.update(
@@ -252,6 +267,7 @@ impl TitleScreen {
                     if self.rocks.num_big + self.rocks.num_med + self.rocks.num_lit == 0
                         && self.gloops.num_gloops == 0
                         && self.hks.num_hks == 0
+                        && self.bombers.num_bombers == 0
                     {
                         self.level += 1;
                         self.reset_level();
@@ -295,6 +311,8 @@ impl TitleScreen {
             .draw(&self.world, &mut self.screen, &mut self.local_rand);
         self.hks
             .draw(&self.world, &mut self.screen, &mut self.local_rand);
+        self.bombers
+            .draw(&self.world, &mut self.screen, &mut self.local_rand);
 
         match self.state {
             Screen::Attract => {
@@ -332,6 +350,12 @@ impl TitleScreen {
                     for i in 0..self.hks.pool().len() {
                         self.radar
                             .plot(&self.hks.pool()[i], HK_RADAR_COLOR, &self.world);
+                    }
+                }
+                if self.bombers.active() {
+                    for i in 0..self.bombers.pool().len() {
+                        self.radar
+                            .plot(&self.bombers.pool()[i], BOMBER_RADAR_COLOR, &self.world);
                     }
                 }
                 self.radar.plot(&self.ship.sprite, 160, &self.world);
