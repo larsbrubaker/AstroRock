@@ -118,6 +118,7 @@ embedded_sequence!(spred, "spred");
 embedded_sequence!(bombg, "bombg");
 embedded_sequence!(one_up, "1up");
 embedded_sequence!(hk, "hk");
+embedded_sequence!(speak, "speak");
 embedded_sequence!(shothk, "shothk");
 
 #[cfg(test)]

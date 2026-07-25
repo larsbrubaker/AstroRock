@@ -41,6 +41,7 @@ pub mod rocks;
 pub mod sequence;
 pub mod shots;
 pub mod spawnfx;
+pub mod speaker;
 pub mod spikeballs;
 pub mod sprite;
 pub mod sprite_list;

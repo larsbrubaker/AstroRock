@@ -23,6 +23,7 @@ impl Game {
             &self.bombers,
             &self.spikeballs,
             &self.fastdeaths,
+            &self.speaker.sprite,
             &self.ship.sprite,
         );
         self.radar.draw(&mut self.screen, 255, 395);
@@ -64,6 +65,8 @@ impl Game {
                 self.world.pset(&mut self.screen, x, y, 15);
             }
             self.explosions.draw(&self.world, &mut self.screen);
+            // `pSpeakerSprite->Draw` — between explosions and goodies.
+            self.speaker.sprite.draw(&self.world, &mut self.screen);
             self.goodies.draw(&self.world, &mut self.screen);
             self.rocks.draw(&self.world, &mut self.screen);
             self.gloops

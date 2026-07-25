@@ -14,9 +14,9 @@ work. If this file ever describes finished work, that's a bug. Use
 
 ## Phase 5 — Playable core (remaining)
 
-- `players.cpp` remainder: the full `UpdateAll` ordering (speaker
-  sprite, hurt/carnage voice timing via LocalRand, untouched/survival
-  bonus flags), `PlayersCollidePlayers` (deferred with net).
+- `players.cpp` remainder: hurt/carnage/new-ship voice lines via
+  `PausePlayerPlay` + LocalRand timing; `PlayersCollidePlayers`
+  (deferred with net).
 - Exact `UpdateAll` call order pass — align update/collide sequence
   with `AstroRock.cpp` line-for-line before demo replay (Phase 9
   depends on it).
@@ -32,10 +32,6 @@ work. If this file ever describes finished work, that's a bug. Use
 - Mixer policy from `SoundWin95.cpp` where it's audible: pan by screen
   x (`GetPosRelCenter`) on one-shots, `PausedSoundPlayer` delay for
   goody voice lines.
-- Speaker-sprite music gag (`SkipMusic` in `AstroRock.cpp`): bumping
-  the world speaker drops music to 7025 Hz for 90 beats — port with
-  the speaker sprite (players.cpp remainder); needs a music-rate
-  control on `AudioSink`.
 - Volume/mute controls (M key, sliders) — land with Phase 8 options
   UI and the settings store.
 

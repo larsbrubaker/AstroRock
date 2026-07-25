@@ -39,6 +39,7 @@ use crate::rand::Rand;
 use crate::rect::Rect;
 use crate::rocks::Rocks;
 use crate::spawnfx::{CompletedSpawn, SpawnFx, SpawnKind};
+use crate::speaker::{self, Speaker};
 use crate::spikeballs::SpikeBalls;
 use crate::statbar::StatBar;
 use crate::thrust::Thrust;
@@ -83,6 +84,7 @@ pub struct Game {
     pub(crate) spikeballs: SpikeBalls,
     pub(crate) fastdeaths: FastDeaths,
     pub(crate) spawnfx: SpawnFx,
+    pub(crate) speaker: Speaker,
     pub(crate) goodies: Goodies,
     pub(crate) explosions: Explosions,
     pub(crate) events: Events,
@@ -105,6 +107,9 @@ pub struct Game {
     /// `NeedToAddLocalPlayer` — press Enter to spawn.
     pub(crate) need_add_player: bool,
     pub(crate) game_over_pause: i32,
+    /// `ResetMusicFrequencyDelay` + whether the slowdown engaged.
+    music_freq_delay: i32,
+    music_slow: bool,
     pub(crate) audio: Option<Box<dyn AudioSink>>,
     /// Chrome-bar toggles.
     pub music_on: bool,
@@ -136,6 +141,11 @@ impl Game {
         let mut rocks = Rocks::new();
         rocks.reset(0, &mut net_rand);
 
+        // Attract-mode cosmetics: give the speaker a random drift
+        // start too (start_game reseeds, so the contract is unhurt).
+        let mut speaker = Speaker::new();
+        speaker.reset(WORLD_W as u32, WORLD_H as u32, &mut net_rand);
+
         let palette = assets::game_palette();
         let fades = FadeBlits::new(&palette);
 
@@ -154,6 +164,7 @@ impl Game {
             spikeballs: SpikeBalls::new(),
             fastdeaths: FastDeaths::new(),
             spawnfx: SpawnFx::new(),
+            speaker,
             goodies: Goodies::new(),
             explosions: Explosions::new(),
             events: Events::new(),
@@ -178,6 +189,8 @@ impl Game {
             audio,
             music_on: true,
             sfx_on: true,
+            music_freq_delay: 0,
+            music_slow: false,
         }
     }
 
@@ -209,7 +222,6 @@ impl Game {
     fn start_game(&mut self) {
         self.net_rand.seed(0);
         self.level = 0;
-        self.explosions.reset();
         self.ship = PlayerShip::new();
         self.ship.reset(NUM_START_SHIPS);
         self.stats.reset(0);
@@ -230,17 +242,22 @@ impl Game {
         self.stats.bad_guys_killed = self.enemies_alive() as i32;
     }
 
-    /// Per-level resets in the original's `ResetFunc` call order
-    /// (RNG draw order is part of the determinism contract).
+    /// `ResetAll` in the original's exact call order — the RNG draw
+    /// order is part of the determinism contract: Rocks, Gloops,
+    /// SpikeBalls, HKs, Bombers, FastDeaths, Goodies, Explosions,
+    /// then the speaker's random position.
     fn reset_level(&mut self) {
         self.rocks.reset(self.level, &mut self.net_rand);
         self.gloops.reset(self.level, &mut self.net_rand);
+        self.spikeballs.reset(self.level, &mut self.net_rand);
         self.hks.reset(self.level, &mut self.net_rand);
         self.bombers.reset(self.level, &mut self.net_rand);
-        self.spikeballs.reset(self.level, &mut self.net_rand);
         self.fastdeaths.reset(self.level, &mut self.net_rand);
         self.goodies.reset(self.level, &mut self.net_rand);
+        self.explosions.reset();
         self.spawnfx = SpawnFx::new();
+        self.speaker
+            .reset(WORLD_W as u32, WORLD_H as u32, &mut self.net_rand);
     }
 
     /// Respawn after death, lives permitting (Enter while dead).
@@ -350,6 +367,8 @@ impl Game {
             &mut self.events,
         );
         self.goodies.update(&clip, &mut self.net_rand);
+        // `pSpeakerSprite->Update()` — right before the collide pass.
+        self.speaker.update(&clip, &mut self.net_rand);
 
         // PlayersCollideObject order: Rocks, Gloops, SpikeBalls, HKs,
         // Bombers, FastDeaths, then Goodies.
@@ -390,6 +409,43 @@ impl Game {
             &mut self.events,
         );
 
+        // The speaker pass: everything dies on its grille; the player
+        // just gets bumped — and any touch is a `SkipMusic`.
+        {
+            let mut ctx = CollideCtx {
+                world: &self.world,
+                explosions: &mut self.explosions,
+                events: &mut self.events,
+                net_rand: &mut self.net_rand,
+                goodies: &mut self.goodies,
+                stats: &mut self.stats,
+                clip,
+            };
+            speaker::speaker_vs_world(
+                &self.speaker,
+                &mut self.rocks,
+                &mut self.gloops,
+                &mut self.spikeballs,
+                &mut self.hks,
+                &mut self.bombers,
+                &mut self.fastdeaths,
+                &mut ctx,
+            );
+            let (touched, died) =
+                speaker::player_vs_speaker(&mut self.ship, &self.speaker, &mut ctx);
+            if touched {
+                // `SkipMusic`: only sustained contact engages the
+                // slowdown; every touch restarts the 90-count.
+                if self.music_freq_delay != 0 {
+                    self.music_slow = true;
+                }
+                self.music_freq_delay = 90;
+            }
+            if died {
+                self.local_player_dead = true;
+            }
+        }
+
         self.ship.update(
             &clip,
             &mut self.net_rand,
@@ -408,6 +464,15 @@ impl Game {
 
     /// Drain the beat's events into the platform sink.
     fn pump_audio(&mut self) {
+        // `ResetMusicFrequencyDelay` counts down in the original's
+        // render loop (framerate-paced, like this pump); at zero the
+        // stream returns to 22050 Hz.
+        if self.music_freq_delay > 0 {
+            self.music_freq_delay -= 1;
+            if self.music_freq_delay == 0 {
+                self.music_slow = false;
+            }
+        }
         // Turn the frame's events into sound; drain regardless so the
         // queue can't grow unbounded when running silent or muted.
         if let Some(sink) = self.audio.as_deref_mut() {
@@ -429,6 +494,7 @@ impl Game {
             // The original starts the music stream at init and restarts
             // it from the main loop forever — attract mode included.
             sink.set_music(self.music_on);
+            sink.set_music_slow(self.music_slow);
         } else {
             for _ in self.events.drain() {}
         }

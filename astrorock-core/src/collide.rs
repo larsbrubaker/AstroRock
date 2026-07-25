@@ -724,7 +724,7 @@ pub fn player_vs_fastdeaths(
     died
 }
 
-fn rock_count(rocks: &Rocks, class: usize) -> usize {
+pub(crate) fn rock_count(rocks: &Rocks, class: usize) -> usize {
     match class {
         0 => rocks.big().len(),
         1 => rocks.med().len(),
@@ -732,7 +732,7 @@ fn rock_count(rocks: &Rocks, class: usize) -> usize {
     }
 }
 
-fn rock_at(rocks: &Rocks, class: usize, i: usize) -> &crate::sprite::Sprite {
+pub(crate) fn rock_at(rocks: &Rocks, class: usize, i: usize) -> &crate::sprite::Sprite {
     match class {
         0 => &rocks.big()[i],
         1 => &rocks.med()[i],
@@ -740,7 +740,7 @@ fn rock_at(rocks: &Rocks, class: usize, i: usize) -> &crate::sprite::Sprite {
     }
 }
 
-fn damage_rock(
+pub(crate) fn damage_rock(
     rocks: &mut Rocks,
     class: usize,
     i: usize,

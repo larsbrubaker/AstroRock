@@ -86,6 +86,7 @@ pub fn plot_world(
     bombers: &crate::bombers::Bombers,
     spikeballs: &crate::spikeballs::SpikeBalls,
     fastdeaths: &crate::fastdeaths::FastDeaths,
+    speaker: &Sprite,
     ship: &Sprite,
 ) {
     for s in rocks.big() {
@@ -120,6 +121,8 @@ pub fn plot_world(
     for s in fastdeaths.pool() {
         radar.plot(s, crate::fastdeaths::FAST_DEATH_RADAR_COLOR, world);
     }
+    // `RadarDrawOn(pSpeakerSprite, 144)`.
+    radar.plot(speaker, crate::speaker::SPEAKER_RADAR_COLOR, world);
     radar.plot(ship, 160, world);
 }
 

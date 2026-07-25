@@ -174,7 +174,15 @@ pub trait AudioSink {
     /// "restart the stream when it stops" main-loop poll); `on` is the
     /// original's volume-above-minimum condition.
     fn set_music(&mut self, on: bool);
+    /// The speaker-sprite gag (`SkipMusic`): while slowed, play the
+    /// soundtrack like a finger on the record —
+    /// `CStreamSoundSetFrequency(Music, 7025)` against the stream's
+    /// native 22050 Hz (rate x0.3186, pitch drop included).
+    fn set_music_slow(&mut self, slow: bool);
 }
+
+/// The `SkipMusic` playback rate: 7025 / 22050.
+pub const MUSIC_SLOW_RATE: f32 = 7025.0 / 22050.0;
 
 /// Drain a frame's events into the sink. `local_rand` drives the
 /// goody sound pick exactly like `GetGoody` (visual/audio RNG — not
@@ -238,6 +246,7 @@ mod tests {
         fn set_music(&mut self, on: bool) {
             self.music.push(on);
         }
+        fn set_music_slow(&mut self, _slow: bool) {}
     }
 
     #[test]

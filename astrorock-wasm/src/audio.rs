@@ -15,7 +15,7 @@ use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use astrorock_core::audio::{AudioSink, LoopKind, SfxId, MUSIC_TRACKS};
+use astrorock_core::audio::{AudioSink, LoopKind, SfxId, MUSIC_SLOW_RATE, MUSIC_TRACKS};
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::{JsCast, JsValue};
 use wasm_bindgen_futures::JsFuture;
@@ -92,6 +92,14 @@ impl WebAudio {
         let music = HtmlAudioElement::new_with_src(&music_src(0)).ok();
         if let Some(el) = &music {
             el.set_volume(MUSIC_VOLUME);
+            // The speaker gag changes playbackRate — let the pitch
+            // drop with it like a slowed record, don't time-stretch.
+            // (preservesPitch is unstable in web-sys; set it raw.)
+            let _ = js_sys::Reflect::set(
+                el.as_ref(),
+                &JsValue::from_str("preservesPitch"),
+                &JsValue::from_bool(false),
+            );
             // Advance through MUSIC_TRACKS and wrap — the equivalent of
             // the original's one concatenated stream restarting itself.
             let track = Rc::new(Cell::new(0usize));
@@ -186,6 +194,15 @@ impl AudioSink for WebAudio {
         if self.ctx.state() == AudioContextState::Running && el.paused() {
             if let Ok(promise) = el.play() {
                 let _ = promise.catch(&self.swallow);
+            }
+        }
+    }
+
+    fn set_music_slow(&mut self, slow: bool) {
+        if let Some(el) = &self.music {
+            let rate = if slow { MUSIC_SLOW_RATE as f64 } else { 1.0 };
+            if el.playback_rate() != rate {
+                el.set_playback_rate(rate);
             }
         }
     }
