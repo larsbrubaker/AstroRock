@@ -94,6 +94,15 @@ embedded_sequence!(ast_big, "astb");
 embedded_sequence!(ast_med, "astm");
 embedded_sequence!(ast_small, "asts");
 embedded_sequence!(shot01, "shot01");
+embedded_sequence!(shot02, "shot02");
+embedded_sequence!(shot03, "shot03");
+embedded_sequence!(bomb, "bomb");
+embedded_sequence!(shield, "shield");
+embedded_sequence!(thrust0, "thrust0");
+embedded_sequence!(thrust1, "thrust1");
+embedded_sequence!(thrust2, "thrust2");
+embedded_sequence!(thrust3, "thrust3");
+embedded_sequence!(thrust4, "thrust4");
 embedded_sequence!(explo, "explo");
 embedded_sequence!(bg_explo, "bgexp");
 

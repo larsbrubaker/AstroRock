@@ -12,19 +12,21 @@ work. If this file ever describes finished work, that's a bug. Use
   `Palette.cpp`) — land with the first consumers (screen fades between
   states; COMBINE_64K users like shields/explosions).
 
-## Phase 5 — Playable core
+## Phase 5 — Playable core (remaining)
 
-- `CSpriteList::Collide` walkers (list-vs-list, list-vs-sprite) with
-  their restart-on-mutation semantics — port with the first callers
-  (rocks/shots callbacks define the handler shapes).
-- `GameSystem` trait replacing the `GameObj` function-pointer vtable —
-  shape it around the first two real systems, not speculatively.
-- `players.cpp`, `pship.cpp` (ship physics, guns, shield, bombs),
-  `shots.cpp`, `thrust.cpp`, `rocks.cpp` (big/med/small splitting),
-  `Explosion.cpp`, `spawnfx.cpp`.
-- Game state machine from `AstroRock.cpp` (`STATE_*`), level/score/bonus,
-  star field, stat bar, radar (`radar.cpp`).
-- Milestone: playable single-player game.
+- `spawnfx.cpp` — spawn-in effect + the spawn protection it implies
+  (right now a rock over the spawn point kills instantly; tests dodge
+  it, the game shouldn't).
+- `players.cpp` remainder: the full `UpdateAll` ordering (speaker
+  sprite, hurt/carnage voice timing via LocalRand, untouched/survival
+  bonus flags), `PlayersCollidePlayers` (deferred with net), stat bar
+  (`printStat`, lives/health/shield readouts — needs bitmap fonts from
+  Phase 8; radar is placed placeholder-center-bottom until then).
+- Intermission/level-advance flow and score bonuses from
+  `AstroRock.cpp` (currently levels hard-cut to the next reset).
+- Exact `UpdateAll` call order pass — align update/collide sequence
+  with `AstroRock.cpp` line-for-line before demo replay (Phase 9
+  depends on it).
 
 ## Phase 6 — Enemies + goodies
 

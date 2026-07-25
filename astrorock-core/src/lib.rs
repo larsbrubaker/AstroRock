@@ -13,19 +13,23 @@
 //! `todo.md` at the workspace root.
 
 pub mod assets;
+pub mod bombs;
 pub mod events;
 pub mod explosion;
 pub mod fixed_trig;
 pub mod frame;
 pub mod heartbeat;
 pub mod palette;
+pub mod pship;
 pub mod radar;
 pub mod rand;
 pub mod rect;
 pub mod rocks;
 pub mod sequence;
+pub mod shots;
 pub mod sprite;
 pub mod sprite_list;
+pub mod thrust;
 pub mod title_screen;
 pub mod virtual_frame;
 
@@ -57,5 +61,9 @@ pub fn load_default_font() -> Arc<Font> {
 /// composition; the bitmap-font UI phase will take it (and until then
 /// shells keep passing it so the signature is stable).
 pub fn build_astrorock_app(_font: Arc<Font>) -> App {
-    App::new(Box::new(TitleScreen::new()))
+    let mut app = App::new(Box::new(TitleScreen::new()));
+    // Held-key tracking needs KeyUp delivery, which only reaches the
+    // focused widget — focus the game surface from the first frame.
+    app.focus_first();
+    app
 }

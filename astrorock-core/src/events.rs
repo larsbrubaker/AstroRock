@@ -7,6 +7,8 @@
 //! not yet ported consume theirs when they land. Emission order is
 //! deterministic (it follows the original call order exactly).
 
+use crate::shots::ShotTier;
+
 /// One frame's side effects, in emission order.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum GameEvent {
@@ -15,6 +17,12 @@ pub enum GameEvent {
     SfxBigExplosion { pan: i32 },
     /// `pSoundMedExplo` — shot hits and small explosions.
     SfxMedExplosion { pan: i32 },
+    /// A shot pool fired (`pFireSound->Play()`, rShot01/02/03Snd).
+    SfxShotFire { tier: ShotTier },
+    /// A bomb launched (`rBombSnd`).
+    SfxBombFire,
+    /// Weapon switch completed (`pChangeGunSound`).
+    SfxChangeGun,
     /// `AddGoody(sprite)` — a little rock died; goodies system decides.
     SpawnGoody { x: f32, y: f32 },
 }
