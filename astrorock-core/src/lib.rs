@@ -13,12 +13,16 @@
 //! `todo.md` at the workspace root.
 
 pub mod assets;
+pub mod events;
+pub mod explosion;
 pub mod fixed_trig;
 pub mod frame;
 pub mod heartbeat;
 pub mod palette;
+pub mod radar;
 pub mod rand;
 pub mod rect;
+pub mod rocks;
 pub mod sequence;
 pub mod sprite;
 pub mod sprite_list;

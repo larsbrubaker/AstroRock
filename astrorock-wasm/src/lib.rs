@@ -16,6 +16,7 @@ pub fn start() {
     web_shell::start(
         "astrorock-canvas",
         || build_astrorock_app(load_default_font()),
-        || {},
+        // The 30 Hz simulation runs continuously — keep the rAF loop hot.
+        || web_shell::mark_dirty(),
     );
 }

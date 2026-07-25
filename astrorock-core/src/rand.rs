@@ -88,6 +88,17 @@ impl Rand {
     pub fn sync(&self) -> u32 {
         self.rand_count
     }
+
+    /// `NetRandAbout0(x)` — signed value about zero, `[-x, x-1]`.
+    ///
+    /// The macro/function didn't survive in the reference tree (the
+    /// source is mid-refactor), but this is Burgerlib's documented
+    /// signed-range idiom — `RandomBase::get_int32`:
+    /// `get_uint32(uRange << 1) - uRange` — which these call sites
+    /// mirror. Phase 9 demo replay validates it empirically.
+    pub fn rand_about0(&mut self, range: u32) -> i32 {
+        self.rand(range << 1) as i32 - range as i32
+    }
 }
 
 impl Default for Rand {
@@ -128,6 +139,26 @@ mod tests {
         let count = r.sync();
         assert_eq!(r.rand(0), 0);
         assert_eq!(r.sync(), count + 1);
+    }
+
+    #[test]
+    fn about0_is_signed_range() {
+        let mut r = Rand::new();
+        for range in [1u32, 4, 8, 100] {
+            for _ in 0..200 {
+                let v = r.rand_about0(range);
+                assert!(
+                    v >= -(range as i32) && v < range as i32,
+                    "range {range}: {v}"
+                );
+            }
+        }
+        // Formula lock: rand_about0(x) must equal rand(2x) - x draw-for-draw.
+        let mut a = Rand::new();
+        let mut b = Rand::new();
+        for _ in 0..50 {
+            assert_eq!(a.rand_about0(8), b.rand(16) as i32 - 8);
+        }
     }
 
     #[test]
