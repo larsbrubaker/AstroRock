@@ -37,6 +37,7 @@ use crate::radar::Radar;
 use crate::rand::Rand;
 use crate::rect::Rect;
 use crate::rocks::Rocks;
+use crate::spikeballs::{SpikeBalls, SPIKEBALL_RADAR_COLOR};
 use crate::thrust::Thrust;
 use crate::virtual_frame::VirtualFrame;
 
@@ -81,6 +82,7 @@ pub struct TitleScreen {
     gloops: Gloops,
     hks: Hks,
     bombers: Bombers,
+    spikeballs: SpikeBalls,
     explosions: Explosions,
     events: Events,
     net_rand: Rand,
@@ -132,6 +134,7 @@ impl TitleScreen {
             gloops: Gloops::new(),
             hks: Hks::new(),
             bombers: Bombers::new(),
+            spikeballs: SpikeBalls::new(),
             explosions: Explosions::new(),
             events: Events::new(),
             net_rand,
@@ -173,6 +176,7 @@ impl TitleScreen {
         self.gloops.reset(self.level, &mut self.net_rand);
         self.hks.reset(self.level, &mut self.net_rand);
         self.bombers.reset(self.level, &mut self.net_rand);
+        self.spikeballs.reset(self.level, &mut self.net_rand);
     }
 
     /// Respawn after death, lives permitting (Enter while dead).
@@ -228,6 +232,13 @@ impl TitleScreen {
                         &mut self.explosions,
                         &mut self.events,
                     );
+                    self.spikeballs.update(
+                        &clip,
+                        &mut self.net_rand,
+                        &self.world,
+                        &mut self.explosions,
+                        &mut self.events,
+                    );
 
                     // PlayersCollideObject order: Rocks first, then
                     // Gloops (then the rest as they're ported).
@@ -268,6 +279,7 @@ impl TitleScreen {
                         && self.gloops.num_gloops == 0
                         && self.hks.num_hks == 0
                         && self.bombers.num_bombers == 0
+                        && self.spikeballs.num_spikeballs == 0
                     {
                         self.level += 1;
                         self.reset_level();
@@ -313,6 +325,8 @@ impl TitleScreen {
             .draw(&self.world, &mut self.screen, &mut self.local_rand);
         self.bombers
             .draw(&self.world, &mut self.screen, &mut self.local_rand);
+        self.spikeballs
+            .draw(&self.world, &mut self.screen, &mut self.local_rand);
 
         match self.state {
             Screen::Attract => {
@@ -356,6 +370,15 @@ impl TitleScreen {
                     for i in 0..self.bombers.pool().len() {
                         self.radar
                             .plot(&self.bombers.pool()[i], BOMBER_RADAR_COLOR, &self.world);
+                    }
+                }
+                if self.spikeballs.active() {
+                    for i in 0..self.spikeballs.pool().len() {
+                        self.radar.plot(
+                            &self.spikeballs.pool()[i],
+                            SPIKEBALL_RADAR_COLOR,
+                            &self.world,
+                        );
                     }
                 }
                 self.radar.plot(&self.ship.sprite, 160, &self.world);

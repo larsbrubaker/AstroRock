@@ -31,6 +31,7 @@ pub mod rect;
 pub mod rocks;
 pub mod sequence;
 pub mod shots;
+pub mod spikeballs;
 pub mod sprite;
 pub mod sprite_list;
 pub mod thrust;

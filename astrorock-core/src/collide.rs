@@ -16,6 +16,7 @@ use crate::pship::PlayerShip;
 use crate::rand::Rand;
 use crate::rect::Rect;
 use crate::rocks::Rocks;
+use crate::spikeballs::{SpikeBalls, SPIKEBALL_COLLIDE_DAMAGE};
 use crate::virtual_frame::VirtualFrame;
 
 /// `#define SHIPCOLLIDEDAMAGE 50`
@@ -508,6 +509,121 @@ pub fn player_vs_bombers(
                     bombers.damage(i, player_bomb_damage, ctx.world, ctx.explosions, ctx.events);
                 ship.add_score(score);
             }
+        }
+    }
+
+    died
+}
+
+/// `PlayersCollideObject(&SpikeBalls, 1)`. The blast-box (`DoBang`)
+/// check runs first against the hull; body collide runs even at zero
+/// count in the sprite path (the original wraps only the bang loop in
+/// `if (NumSpikeBalls)`). Returns true if the ship died.
+pub fn player_vs_spikeballs(
+    ship: &mut PlayerShip,
+    spikeballs: &mut SpikeBalls,
+    ctx: &mut CollideCtx,
+) -> bool {
+    let mut died = false;
+
+    if ship.sprite.visible {
+        let shield = ship.shield_on;
+        let dmg_dealt = if shield {
+            SHIP_SHIELD_DAMAGE
+        } else {
+            SHIP_COLLIDE_DAMAGE
+        };
+
+        // One-beat blast boxes.
+        if spikeballs.active() {
+            for i in 0..spikeballs.slots() {
+                if let Some(rect) = spikeballs.bang_rect(i) {
+                    if ship.sprite.collide_rect(&rect) && !shield {
+                        if damage_player(ship, spikeballs.bang_damage, ctx) {
+                            died = true;
+                        }
+                        if !ship.sprite.visible {
+                            return died;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Body contact (unconditional in the sprite path).
+        for i in 0..spikeballs.pool().len() {
+            let hit = {
+                let b = &spikeballs.pool()[i];
+                b.visible && b.collide_sprite(&ship.sprite, &ctx.clip)
+            };
+            if hit {
+                let score = spikeballs.damage(
+                    i,
+                    dmg_dealt,
+                    ctx.net_rand,
+                    ctx.world,
+                    ctx.explosions,
+                    ctx.events,
+                );
+                ship.add_score(score);
+                if !shield {
+                    if damage_player(ship, SPIKEBALL_COLLIDE_DAMAGE, ctx) {
+                        died = true;
+                    }
+                    if !ship.sprite.visible {
+                        return died;
+                    }
+                }
+            }
+        }
+    }
+
+    // Player shots.
+    let shot_damage = ship.shots[ship.cur_shots].damage;
+    for bi in 0..spikeballs.pool().len() {
+        for ps in 0..15usize {
+            let hit = {
+                let b = &spikeballs.pool()[bi];
+                let player_shot = ship.shots[ship.cur_shots].iter().nth(ps).expect("pool");
+                b.visible && player_shot.visible && b.collide_sprite(player_shot, &ctx.clip)
+            };
+            if hit {
+                let score = spikeballs.damage(
+                    bi,
+                    shot_damage,
+                    ctx.net_rand,
+                    ctx.world,
+                    ctx.explosions,
+                    ctx.events,
+                );
+                ship.add_score(score);
+                let cur = ship.cur_shots;
+                ship.shots[cur].hide(ps);
+            }
+        }
+    }
+
+    // Player bombs.
+    let bomb_damage = ship.bombs.damage;
+    for bi in 0..spikeballs.pool().len() {
+        let hit = {
+            let b = &spikeballs.pool()[bi];
+            b.visible
+                && ship
+                    .bombs
+                    .iter()
+                    .any(|pb| pb.visible && b.collide_sprite(pb, &ctx.clip))
+        };
+        if hit {
+            let score = spikeballs.damage(
+                bi,
+                bomb_damage,
+                ctx.net_rand,
+                ctx.world,
+                ctx.explosions,
+                ctx.events,
+            );
+            ship.add_score(score);
         }
     }
 

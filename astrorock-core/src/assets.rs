@@ -35,6 +35,10 @@ pub const HK3_PAL: &[u8] = include_bytes!("../../assets/palettes/hk3.pal");
 pub const BOMBER2_PAL: &[u8] = include_bytes!("../../assets/palettes/bomber2.pal");
 pub const BOMBER3_PAL: &[u8] = include_bytes!("../../assets/palettes/bomber3.pal");
 
+/// `rSpikeBall2Pal` / `rSpikeBall3Pal` — spikeball tier remap tables.
+pub const SPIKEBALL2_PAL: &[u8] = include_bytes!("../../assets/palettes/spkball2.pal");
+pub const SPIKEBALL3_PAL: &[u8] = include_bytes!("../../assets/palettes/spkball3.pal");
+
 /// Decode an 8-bit indexed PNG (as written by `astrorock-tools`) into a
 /// [`Frame`] of palette indices. Panics on malformed embedded data —
 /// these bytes ship inside the binary, so failure is a build defect.
