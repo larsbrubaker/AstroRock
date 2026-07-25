@@ -42,7 +42,6 @@ pub struct SpawnFx {
     duration: u32,
     kind: Option<SpawnKind>,
     cur_frame: f32,
-    spike_dir: f32,
     x: f32,
     y: f32,
 }
@@ -53,7 +52,6 @@ impl SpawnFx {
             duration: 0,
             kind: None,
             cur_frame: 0.0,
-            spike_dir: 1.0,
             x: 0.0,
             y: 0.0,
         }
