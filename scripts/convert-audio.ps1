@@ -7,6 +7,12 @@
 #
 # The originals are mono PCM (SFX mostly 8-bit 11/22 kHz, music 22 kHz
 # 16-bit); 128 kbps mono LAME is transparent for this material.
+#
+# SFX are forced to 44100 Hz: LAME at the source's 22 kHz produces
+# MPEG-2 layer III, which rodio's symphonia backend opens but decodes
+# to ZERO samples (native SFX were silent while wasm played fine —
+# browsers decode MPEG-2). 44100 Hz makes them MPEG-1, which decodes
+# everywhere.
 
 param(
     [Parameter(Mandatory = $true)][string]$SourceRoot,
@@ -25,7 +31,7 @@ $failed = $false
 
 foreach ($wav in Get-ChildItem (Join-Path $SourceRoot "SOUND") -Filter *.wav) {
     $name = $wav.BaseName.ToLowerInvariant()
-    & $Ffmpeg -y -loglevel error -i $wav.FullName -codec:a libmp3lame -b:a 128k `
+    & $Ffmpeg -y -loglevel error -i $wav.FullName -codec:a libmp3lame -b:a 128k -ar 44100 `
         (Join-Path $sfxOut "$name.mp3")
     if ($LASTEXITCODE -ne 0) { Write-Host "FAILED: $($wav.Name)"; $failed = $true }
 }
