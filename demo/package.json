@@ -4,8 +4,9 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
+    "sync-assets": "bun sync-assets.ts",
+    "dev": "bun run sync-assets && vite",
+    "build": "bun run sync-assets && vite build",
     "preview": "vite preview",
     "wasm": "wasm-pack build ../astrorock-wasm --target web --out-dir ../demo/public/pkg --no-typescript"
   },

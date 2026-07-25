@@ -1,0 +1,49 @@
+{
+  "source": "marker.spr",
+  "version": 1,
+  "num_frames": 4,
+  "num_rotations": 1,
+  "original_bounds": [
+    0,
+    0,
+    0,
+    0
+  ],
+  "cell_w": 9,
+  "cell_h": 9,
+  "columns": 2,
+  "frames": [
+    {
+      "x": 0,
+      "y": 0,
+      "w": 9,
+      "h": 9,
+      "hot_x": 4,
+      "hot_y": 4
+    },
+    {
+      "x": 9,
+      "y": 0,
+      "w": 9,
+      "h": 9,
+      "hot_x": 4,
+      "hot_y": 4
+    },
+    {
+      "x": 0,
+      "y": 9,
+      "w": 9,
+      "h": 9,
+      "hot_x": 4,
+      "hot_y": 4
+    },
+    {
+      "x": 9,
+      "y": 9,
+      "w": 9,
+      "h": 9,
+      "hot_x": 4,
+      "hot_y": 4
+    }
+  ]
+}

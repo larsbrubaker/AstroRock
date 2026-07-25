@@ -5,7 +5,9 @@
 //! emit the converted assets this repo commits. See CLAUDE.md "Assets".
 //!
 //! ```text
-//! astrorock-tools extract-rez <rezfile> <REZFILE.hpp> <out-dir>
+//! astrorock-tools extract-rez      <rezfile> <REZFILE.hpp> <out-dir>
+//! astrorock-tools convert-sprites  <spr-dir> <out-dir>
+//! astrorock-tools convert-bmps     <bmp-dir> <out-dir>
 //! ```
 //!
 //! `extract-rez` unpacks every resource in the Burgerlib archive to
@@ -13,8 +15,15 @@
 //! prints a manifest. The tuning configs (`*Cfg`) are the entries with no
 //! loose source file — they get copied into `assets/config/` by hand after
 //! review.
+//!
+//! `convert-sprites` turns every `.spr` in a directory into an indexed
+//! PNG sheet + JSON sidecar; `convert-bmps` turns every 8-bit `.bmp`
+//! into an indexed PNG. Palette indices survive both conversions.
 
+mod bmp;
 mod rez;
+mod sheet;
+mod spr;
 
 use std::fs;
 use std::path::Path;
@@ -22,21 +31,111 @@ use std::process::ExitCode;
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    match args.as_slice() {
+    let result = match args.as_slice() {
         [cmd, rezfile, hpp, out_dir] if cmd == "extract-rez" => {
-            match extract_rez(Path::new(rezfile), Path::new(hpp), Path::new(out_dir)) {
-                Ok(()) => ExitCode::SUCCESS,
-                Err(e) => {
-                    eprintln!("error: {e}");
-                    ExitCode::FAILURE
-                }
-            }
+            extract_rez(Path::new(rezfile), Path::new(hpp), Path::new(out_dir))
+        }
+        [cmd, in_dir, out_dir] if cmd == "convert-sprites" => {
+            convert_sprites(Path::new(in_dir), Path::new(out_dir))
+        }
+        [cmd, in_dir, out_dir] if cmd == "convert-bmps" => {
+            convert_bmps(Path::new(in_dir), Path::new(out_dir))
         }
         _ => {
-            eprintln!("usage: astrorock-tools extract-rez <rezfile> <REZFILE.hpp> <out-dir>");
+            eprintln!(
+                "usage: astrorock-tools extract-rez <rezfile> <REZFILE.hpp> <out-dir>\n\
+                        astrorock-tools convert-sprites <spr-dir> <out-dir>\n\
+                        astrorock-tools convert-bmps <bmp-dir> <out-dir>"
+            );
+            return ExitCode::FAILURE;
+        }
+    };
+    match result {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(e) => {
+            eprintln!("error: {e}");
             ExitCode::FAILURE
         }
     }
+}
+
+/// Convert every `.spr` in `in_dir` to `<stem>.png` + `<stem>.json`.
+fn convert_sprites(in_dir: &Path, out_dir: &Path) -> Result<(), String> {
+    fs::create_dir_all(out_dir).map_err(|e| format!("create {}: {e}", out_dir.display()))?;
+    let mut converted = 0;
+    for path in files_with_extension(in_dir, "spr")? {
+        let data = fs::read(&path).map_err(|e| format!("read {}: {e}", path.display()))?;
+        let seq = spr::parse_spr(&data).map_err(|e| format!("{}: {e}", path.display()))?;
+        let stem = normalized_stem(&path);
+        let source = file_name(&path);
+        sheet::write_sprite_sheet(&seq, &source, out_dir, &stem)?;
+        println!(
+            "{source:14} -> {stem}.png  ({} frames x {} rotations)",
+            seq.num_frames, seq.num_rotations
+        );
+        converted += 1;
+    }
+    println!("converted {converted} sprite sequences");
+    Ok(())
+}
+
+/// Convert every 8-bit `.bmp` in `in_dir` to an indexed `<stem>.png`.
+fn convert_bmps(in_dir: &Path, out_dir: &Path) -> Result<(), String> {
+    fs::create_dir_all(out_dir).map_err(|e| format!("create {}: {e}", out_dir.display()))?;
+    let mut converted = 0;
+    for path in files_with_extension(in_dir, "bmp")? {
+        let data = fs::read(&path).map_err(|e| format!("read {}: {e}", path.display()))?;
+        let image = bmp::parse_bmp(&data).map_err(|e| format!("{}: {e}", path.display()))?;
+        let stem = normalized_stem(&path);
+        sheet::write_indexed_png(
+            &out_dir.join(format!("{stem}.png")),
+            image.width,
+            image.height,
+            &image.palette,
+            &image.bits,
+        )?;
+        println!(
+            "{:14} -> {stem}.png  ({}x{})",
+            file_name(&path),
+            image.width,
+            image.height
+        );
+        converted += 1;
+    }
+    println!("converted {converted} bitmaps");
+    Ok(())
+}
+
+/// All files in `dir` with the given extension (case-insensitive),
+/// sorted by name for stable output.
+fn files_with_extension(dir: &Path, ext: &str) -> Result<Vec<std::path::PathBuf>, String> {
+    let entries = fs::read_dir(dir).map_err(|e| format!("read dir {}: {e}", dir.display()))?;
+    let mut paths: Vec<_> = entries
+        .filter_map(|e| e.ok().map(|e| e.path()))
+        .filter(|p| {
+            p.extension()
+                .and_then(|e| e.to_str())
+                .is_some_and(|e| e.eq_ignore_ascii_case(ext))
+        })
+        .collect();
+    paths.sort();
+    Ok(paths)
+}
+
+/// Lower-cased file stem — the original tree mixes cases freely
+/// (`ASTB.spr`, `astroteg.bmp`); the converted tree is uniform.
+fn normalized_stem(path: &Path) -> String {
+    path.file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("unnamed")
+        .to_ascii_lowercase()
+}
+
+fn file_name(path: &Path) -> String {
+    path.file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or("?")
+        .to_string()
 }
 
 fn extract_rez(rez_path: &Path, hpp_path: &Path, out_dir: &Path) -> Result<(), String> {

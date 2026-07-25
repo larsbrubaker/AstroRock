@@ -5,16 +5,6 @@ As items complete, delete them — in the same commit that finishes the
 work. If this file ever describes finished work, that's a bug. Use
 `git log` for history.
 
-## Phase 1 — Asset pipeline (`astrorock-tools` crate)
-
-- `.spr` (LBBSPR v4, format in `sequence.cpp`/`Sequence.hpp`: magic
-  `LBBSPR`, version 4, little-endian longs, optional RLE + alpha block)
-  → indexed PNG sheet + JSON sidecar per sprite.
-- Interface BMPs (8-bit indexed, `BMPFileIO.cpp`) → indexed PNG.
-- `ART/palettes/*.pal` (768-byte RGB) → commit under `assets/palettes/`.
-- WAV → mp3 conversion script (ffmpeg): `SOUND/*.WAV` → `assets/sfx/`,
-  `Music/Track02..08.wav` → `demo/public/assets/music/`.
-
 ## Phase 2 — Deterministic foundations
 
 - `Fixed` (16.16) port of `Fixed.hpp` with MSVC-exact mul/div/truncation.

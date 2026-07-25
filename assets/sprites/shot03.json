@@ -1,0 +1,41 @@
+{
+  "source": "shot03.spr",
+  "version": 1,
+  "num_frames": 3,
+  "num_rotations": 1,
+  "original_bounds": [
+    0,
+    0,
+    0,
+    0
+  ],
+  "cell_w": 14,
+  "cell_h": 14,
+  "columns": 2,
+  "frames": [
+    {
+      "x": 0,
+      "y": 0,
+      "w": 14,
+      "h": 14,
+      "hot_x": 7,
+      "hot_y": 7
+    },
+    {
+      "x": 14,
+      "y": 0,
+      "w": 10,
+      "h": 10,
+      "hot_x": 5,
+      "hot_y": 5
+    },
+    {
+      "x": 0,
+      "y": 14,
+      "w": 8,
+      "h": 8,
+      "hot_x": 4,
+      "hot_y": 4
+    }
+  ]
+}

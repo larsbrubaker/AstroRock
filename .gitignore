@@ -5,6 +5,7 @@ Cargo.lock.bak
 node_modules/
 demo/dist
 demo/public/pkg
+demo/public/music
 demo/bun.lock
 
 # OS

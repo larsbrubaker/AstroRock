@@ -1,0 +1,41 @@
+{
+  "source": "bomb.spr",
+  "version": 1,
+  "num_frames": 3,
+  "num_rotations": 1,
+  "original_bounds": [
+    0,
+    0,
+    0,
+    0
+  ],
+  "cell_w": 20,
+  "cell_h": 19,
+  "columns": 2,
+  "frames": [
+    {
+      "x": 0,
+      "y": 0,
+      "w": 19,
+      "h": 19,
+      "hot_x": 9,
+      "hot_y": 9
+    },
+    {
+      "x": 20,
+      "y": 0,
+      "w": 19,
+      "h": 19,
+      "hot_x": 10,
+      "hot_y": 9
+    },
+    {
+      "x": 0,
+      "y": 19,
+      "w": 20,
+      "h": 19,
+      "hot_x": 10,
+      "hot_y": 9
+    }
+  ]
+}

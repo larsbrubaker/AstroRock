@@ -8,6 +8,11 @@ license.workspace = true
 repository.workspace = true
 description = "One-time asset conversion tools for the AstroRock port (rez extraction, sprite/BMP conversion)."
 
+[dependencies]
+png = "0.17"
+serde = { workspace = true }
+serde_json = { workspace = true }
+
 [[bin]]
 name = "astrorock-tools"
 path = "src/main.rs"
