@@ -12,6 +12,9 @@
 //! native + web pipeline. The game systems land phase by phase; see
 //! `todo.md` at the workspace root.
 
+pub mod fixed_trig;
+pub mod heartbeat;
+pub mod rand;
 mod title_screen;
 
 use std::sync::Arc;

@@ -10,6 +10,9 @@ description = "Target-agnostic game core for AstroRock (Rust port of the 1997 or
 
 [dependencies]
 agg-gui = { workspace = true }
+# Table generation for fixed_trig — pure-Rust libm so native and wasm
+# produce identical f32 bits (std trig differs between targets).
+libm = "0.2"
 serde = { workspace = true }
 serde_json = { workspace = true }
 web-time = { workspace = true }

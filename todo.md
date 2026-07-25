@@ -5,15 +5,6 @@ As items complete, delete them — in the same commit that finishes the
 work. If this file ever describes finished work, that's a bug. Use
 `git log` for history.
 
-## Phase 2 — Deterministic foundations
-
-- `Fixed` (16.16) port of `Fixed.hpp` with MSVC-exact mul/div/truncation.
-- `FixedTrig` tables (`ATBLSIZEBITS 6`) — sin/cos/atan bit-exact.
-- Burgerlib RNG port from `rand.cpp`.
-- 30 Hz `HeartBeat` accumulator (`ReadAndClear` semantics).
-- Settings store trait (JSON; file on native, localStorage on wasm)
-  replacing binary `Astro.cfg`.
-
 ## Phase 3 — Indexed compositor
 
 - `Frame` (8-bit indexed) + `VirtualFrame` (2048×1024 wrapping world,
@@ -67,6 +58,8 @@ work. If this file ever describes finished work, that's a bug. Use
   look.
 - `HighScore.cpp`, intermission/pause/game-over flows, `text.hpp`
   strings → `text.rs`.
+- Settings store trait (JSON; file on native, localStorage on wasm)
+  replacing binary `Astro.cfg` — key bindings, volumes, high scores.
 
 ## Phase 9 — Demo regression suite
 

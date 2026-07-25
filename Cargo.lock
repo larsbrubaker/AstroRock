@@ -171,6 +171,7 @@ version = "0.1.0"
 dependencies = [
  "agg-gui",
  "getrandom 0.2.17",
+ "libm",
  "serde",
  "serde_json",
  "web-time",

@@ -33,13 +33,19 @@ implementations. If dependencies aren't ready, implement them first.
 simulation: demo playback (`demo/*.dat` = recorded inputs + periodic
 checksums) and any future net play depend on bit-identical behavior.
 Consequences:
-- `CFixed` (16.16 fixed-point), the `FixedTrig` tables, and the
-  Burgerlib-derived RNG (`rand.cpp`) are ported bit-exactly. Gameplay
-  math never uses floats.
+- The shipped game compiles `CFixed` as `typedef float` (`USE_AS_FIXED
+  0` in `Fixed.hpp`) — gameplay math is **f32**, not fixed-point. Port
+  it as f32 with the exact C expression shapes (promotion to double and
+  truncation points included); never reassociate or "simplify" float
+  expressions — the rounding IS the behavior.
+- `fixed_trig.rs` tables are generated with the `libm` crate (NOT std)
+  so native and wasm produce identical bits; lock-in tests pin exact
+  f32 bit patterns. The RNG (`rand.rs`) is wrapping-u32 bit-exact.
 - Update order, RNG draw order, and per-object `Check()` checksums match
   the C++ exactly.
-- Never "simplify" fixed-point expressions — the truncation behavior IS
-  the behavior.
+- Rust-recorded demos are deterministic across native + wasm. Whether
+  the 1997 MSVC/x87 demo checksums reproduce is settled empirically in
+  Phase 9 — if they diverge, root-cause before deciding anything.
 
 **Test-first bug fixing.** 1) Write a failing test that reproduces the
 bug. 2) Fix it. 3) Confirm the test passes. Never commit a bug fix that
@@ -66,7 +72,7 @@ traces. Never guess at divergences from reading code.
 
 | C++ | Rust |
 |---|---|
-| `CFixed` / `SPRITE_UNIT` | `Fixed` newtype over `i32`, wrapping ops matching MSVC |
+| `CFixed` / `SPRITE_UNIT` | `f32` (the shipped `USE_AS_FIXED 0` config), C expression shapes preserved |
 | intrusive `pNext/pPrev` sprite lists | `Vec` arenas + indices |
 | `GameObj` C-function-pointer vtable | `GameSystem` trait |
 | `LoadAResource(rXxx)` | direct load of converted assets (PNG/JSON/MP3/text) |
