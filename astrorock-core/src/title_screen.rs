@@ -23,6 +23,7 @@ use agg_gui::widget::Widget;
 use web_time::Instant;
 
 use crate::assets;
+use crate::audio::{self, AudioSink, LoopKind};
 use crate::bombers::{Bombers, BOMBER_RADAR_COLOR};
 use crate::collide::{self, CollideCtx};
 use crate::events::Events;
@@ -104,10 +105,15 @@ pub struct TitleScreen {
     radar: Radar,
     level: usize,
     local_player_dead: bool,
+    audio: Option<Box<dyn AudioSink>>,
 }
 
 impl TitleScreen {
     pub fn new() -> Self {
+        Self::new_with_audio(None)
+    }
+
+    pub fn new_with_audio(audio: Option<Box<dyn AudioSink>>) -> Self {
         // `STARInit`: NetRand(2048) x NetRand(1024); NetRand default-
         // constructs with seed 0, so the field matches the original's
         // first frame.
@@ -159,6 +165,7 @@ impl TitleScreen {
             radar: Radar::new(),
             level: 0,
             local_player_dead: false,
+            audio,
         }
     }
 
@@ -352,8 +359,17 @@ impl TitleScreen {
                 }
             }
         }
-        // No audio sink yet — drain so the queue can't grow unbounded.
-        for _ in self.events.drain() {}
+        // Turn the frame's events into sound; drain regardless so the
+        // queue can't grow unbounded when running silent.
+        if let Some(sink) = self.audio.as_deref_mut() {
+            audio::dispatch(&mut self.events, sink, &mut self.local_rand);
+            let playing = self.state == Screen::Playing;
+            let alive = playing && self.ship.sprite.visible;
+            sink.set_loop(LoopKind::Thrust, alive && self.ship.thrusting);
+            sink.set_loop(LoopKind::Shield, alive && self.ship.shield_on);
+        } else {
+            for _ in self.events.drain() {}
+        }
     }
 
     /// Compose one frame into the indexed back buffer.

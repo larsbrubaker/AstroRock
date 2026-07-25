@@ -13,6 +13,7 @@
 //! `todo.md` at the workspace root.
 
 pub mod assets;
+pub mod audio;
 pub mod bombers;
 pub mod bombs;
 pub mod collide;
@@ -69,7 +70,16 @@ pub fn load_default_font() -> Arc<Font> {
 /// composition; the bitmap-font UI phase will take it (and until then
 /// shells keep passing it so the signature is stable).
 pub fn build_astrorock_app(_font: Arc<Font>) -> App {
-    let mut app = App::new(Box::new(TitleScreen::new()));
+    build_astrorock_app_with_audio(_font, None)
+}
+
+/// Build the app with a platform audio sink (rodio native, WebAudio
+/// wasm). `None` runs silent — the deterministic sim is unaffected.
+pub fn build_astrorock_app_with_audio(
+    _font: Arc<Font>,
+    audio: Option<Box<dyn audio::AudioSink>>,
+) -> App {
+    let mut app = App::new(Box::new(TitleScreen::new_with_audio(audio)));
     // Held-key tracking needs KeyUp delivery, which only reaches the
     // focused widget — focus the game surface from the first frame.
     app.focus_first();
