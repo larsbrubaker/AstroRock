@@ -25,6 +25,10 @@ pub const TEASER_PNG: &[u8] = include_bytes!("../../assets/interfac/teaser.png")
 pub const GLOOP2_PAL: &[u8] = include_bytes!("../../assets/palettes/gloop2.pal");
 pub const GLOOP3_PAL: &[u8] = include_bytes!("../../assets/palettes/gloop3.pal");
 
+/// `rHk2Pal` / `rHk3Pal` — hunter-killer tier recolor remap tables.
+pub const HK2_PAL: &[u8] = include_bytes!("../../assets/palettes/hk2.pal");
+pub const HK3_PAL: &[u8] = include_bytes!("../../assets/palettes/hk3.pal");
+
 /// Decode an 8-bit indexed PNG (as written by `astrorock-tools`) into a
 /// [`Frame`] of palette indices. Panics on malformed embedded data —
 /// these bytes ship inside the binary, so failure is a build defect.

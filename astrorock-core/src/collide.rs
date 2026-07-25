@@ -10,6 +10,7 @@
 use crate::events::Events;
 use crate::explosion::Explosions;
 use crate::gloops::{Gloops, GLOOP_COLLIDE_DAMAGE};
+use crate::hks::{Hks, HK_COLLIDE_DAMAGE};
 use crate::pship::PlayerShip;
 use crate::rand::Rand;
 use crate::rect::Rect;
@@ -194,6 +195,155 @@ pub fn player_vs_gloops(ship: &mut PlayerShip, gloops: &mut Gloops, ctx: &mut Co
         if hit {
             let score = gloops.damage(gi, bomb_damage, ctx.world, ctx.explosions, ctx.events);
             ship.add_score(score);
+        }
+    }
+
+    died
+}
+
+/// `PlayersCollideObject(&HKs, 1)`. HK shots collide before HK bodies
+/// (`HKsCollideSprite`/`List` order); an HK shot that hits anything
+/// explodes via `HideSprite` → `ExploSprite`. Returns true if the ship
+/// died.
+pub fn player_vs_hks(ship: &mut PlayerShip, hks: &mut Hks, ctx: &mut CollideCtx) -> bool {
+    let mut died = false;
+
+    // Hull pass. HK shots first ("check shots even after all the hks
+    // are dead"), then HK bodies.
+    if ship.sprite.visible {
+        let shield = ship.shield_on;
+        if hks.engaged() {
+            for pi in 0..hks.shots.len() {
+                for si in 0..hks.shots[pi].len() {
+                    let hit = {
+                        let shot = hks.shots[pi].get(si);
+                        shot.visible && shot.collide_sprite(&ship.sprite, &ctx.clip)
+                    };
+                    if hit {
+                        ctx.explosions.explo_sprite(
+                            hks.shots[pi].get_mut(si),
+                            ctx.world,
+                            ctx.events,
+                        );
+                        if !shield {
+                            if damage_player(ship, hks.shot_damage, ctx) {
+                                died = true;
+                            }
+                            if !ship.sprite.visible {
+                                return died;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if hks.active() {
+            let dmg_to_hk = if shield {
+                SHIP_SHIELD_DAMAGE
+            } else {
+                SHIP_COLLIDE_DAMAGE
+            };
+            for i in 0..hks.pool().len() {
+                let hit = {
+                    let h = &hks.pool()[i];
+                    h.visible && h.collide_sprite(&ship.sprite, &ctx.clip)
+                };
+                if hit {
+                    let score = hks.damage(i, dmg_to_hk, ctx.world, ctx.explosions, ctx.events);
+                    ship.add_score(score);
+                    if !shield {
+                        if damage_player(ship, HK_COLLIDE_DAMAGE, ctx) {
+                            died = true;
+                        }
+                        if !ship.sprite.visible {
+                            return died;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Player shot pool pass: HK shots can be shot down (both vanish,
+    // the HK shot exploding), then HK bodies take shot damage.
+    let shot_damage = ship.shots[ship.cur_shots].damage;
+    if hks.engaged() {
+        for pi in 0..hks.shots.len() {
+            for hs in 0..hks.shots[pi].len() {
+                for ps in 0..15usize {
+                    let hit = {
+                        let hk_shot = hks.shots[pi].get(hs);
+                        let player_shot = ship.shots[ship.cur_shots].iter().nth(ps).expect("pool");
+                        hk_shot.visible
+                            && player_shot.visible
+                            && hk_shot.collide_sprite(player_shot, &ctx.clip)
+                    };
+                    if hit {
+                        ctx.explosions.explo_sprite(
+                            hks.shots[pi].get_mut(hs),
+                            ctx.world,
+                            ctx.events,
+                        );
+                        let cur = ship.cur_shots;
+                        ship.shots[cur].hide(ps);
+                    }
+                }
+            }
+        }
+    }
+    if hks.active() {
+        for hi in 0..hks.pool().len() {
+            for ps in 0..15usize {
+                let hit = {
+                    let h = &hks.pool()[hi];
+                    let player_shot = ship.shots[ship.cur_shots].iter().nth(ps).expect("pool");
+                    h.visible && player_shot.visible && h.collide_sprite(player_shot, &ctx.clip)
+                };
+                if hit {
+                    let score = hks.damage(hi, shot_damage, ctx.world, ctx.explosions, ctx.events);
+                    ship.add_score(score);
+                    let cur = ship.cur_shots;
+                    ship.shots[cur].hide(ps);
+                }
+            }
+        }
+    }
+
+    // Bomb pass: HK shots explode on bombs (bomb sails on), HK bodies
+    // take bomb damage.
+    let bomb_damage = ship.bombs.damage;
+    if hks.engaged() {
+        for pi in 0..hks.shots.len() {
+            for hs in 0..hks.shots[pi].len() {
+                let hit = {
+                    let hk_shot = hks.shots[pi].get(hs);
+                    hk_shot.visible
+                        && ship
+                            .bombs
+                            .iter()
+                            .any(|b| b.visible && hk_shot.collide_sprite(b, &ctx.clip))
+                };
+                if hit {
+                    ctx.explosions
+                        .explo_sprite(hks.shots[pi].get_mut(hs), ctx.world, ctx.events);
+                }
+            }
+        }
+    }
+    if hks.active() {
+        for hi in 0..hks.pool().len() {
+            let hit = {
+                let h = &hks.pool()[hi];
+                h.visible
+                    && ship
+                        .bombs
+                        .iter()
+                        .any(|b| b.visible && h.collide_sprite(b, &ctx.clip))
+            };
+            if hit {
+                let score = hks.damage(hi, bomb_damage, ctx.world, ctx.explosions, ctx.events);
+                ship.add_score(score);
+            }
         }
     }
 

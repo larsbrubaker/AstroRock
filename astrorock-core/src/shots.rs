@@ -26,6 +26,8 @@ pub enum ShotTier {
     Normal,
     Power,
     Super,
+    /// Hunter-killer fire (`rHKShotSnd`).
+    Hk,
 }
 
 pub struct Shots {
@@ -111,6 +113,22 @@ impl Shots {
 
     pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut Sprite> {
         self.pool.iter_mut()
+    }
+
+    pub fn len(&self) -> usize {
+        self.pool.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.pool.is_empty()
+    }
+
+    pub fn get(&self, index: usize) -> &Sprite {
+        &self.pool[index]
+    }
+
+    pub fn get_mut(&mut self, index: usize) -> &mut Sprite {
+        &mut self.pool[index]
     }
 
     /// Hide shot `i` (collision handlers' `HideSprite`).

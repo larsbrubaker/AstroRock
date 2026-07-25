@@ -21,6 +21,7 @@ pub mod fixed_trig;
 pub mod frame;
 pub mod gloops;
 pub mod heartbeat;
+pub mod hks;
 pub mod palette;
 pub mod pship;
 pub mod radar;

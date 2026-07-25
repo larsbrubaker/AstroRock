@@ -29,6 +29,7 @@ use crate::explosion::Explosions;
 use crate::frame::{BlitMode, Frame};
 use crate::gloops::Gloops;
 use crate::heartbeat::HeartBeat;
+use crate::hks::{Hks, HK_RADAR_COLOR};
 use crate::palette::Palette;
 use crate::pship::{PlayerShip, ShipInputs};
 use crate::radar::Radar;
@@ -77,6 +78,7 @@ pub struct TitleScreen {
     stars: Vec<(i32, i32)>,
     rocks: Rocks,
     gloops: Gloops,
+    hks: Hks,
     explosions: Explosions,
     events: Events,
     net_rand: Rand,
@@ -126,6 +128,7 @@ impl TitleScreen {
             stars,
             rocks,
             gloops: Gloops::new(),
+            hks: Hks::new(),
             explosions: Explosions::new(),
             events: Events::new(),
             net_rand,
@@ -165,6 +168,7 @@ impl TitleScreen {
     fn reset_level(&mut self) {
         self.rocks.reset(self.level, &mut self.net_rand);
         self.gloops.reset(self.level, &mut self.net_rand);
+        self.hks.reset(self.level, &mut self.net_rand);
     }
 
     /// Respawn after death, lives permitting (Enter while dead).
@@ -205,6 +209,13 @@ impl TitleScreen {
                     self.explosions.update(&clip, &mut self.net_rand);
                     self.gloops
                         .update(&clip, &mut self.net_rand, &self.world, &self.ship.sprite);
+                    self.hks.update(
+                        &clip,
+                        &mut self.net_rand,
+                        &self.world,
+                        &self.ship.sprite,
+                        &mut self.events,
+                    );
 
                     // PlayersCollideObject order: Rocks first, then
                     // Gloops (then the rest as they're ported).
@@ -222,6 +233,9 @@ impl TitleScreen {
                         if collide::player_vs_gloops(&mut self.ship, &mut self.gloops, &mut ctx) {
                             self.local_player_dead = true;
                         }
+                        if collide::player_vs_hks(&mut self.ship, &mut self.hks, &mut ctx) {
+                            self.local_player_dead = true;
+                        }
                     }
 
                     self.ship.update(
@@ -237,6 +251,7 @@ impl TitleScreen {
                     // active counts all hit zero).
                     if self.rocks.num_big + self.rocks.num_med + self.rocks.num_lit == 0
                         && self.gloops.num_gloops == 0
+                        && self.hks.num_hks == 0
                     {
                         self.level += 1;
                         self.reset_level();
@@ -278,6 +293,8 @@ impl TitleScreen {
         self.rocks.draw(&self.world, &mut self.screen);
         self.gloops
             .draw(&self.world, &mut self.screen, &mut self.local_rand);
+        self.hks
+            .draw(&self.world, &mut self.screen, &mut self.local_rand);
 
         match self.state {
             Screen::Attract => {
@@ -309,6 +326,12 @@ impl TitleScreen {
                 if self.gloops.active() {
                     for i in 0..self.gloops.pool().len() {
                         self.radar.plot(&self.gloops.pool()[i], 104, &self.world);
+                    }
+                }
+                if self.hks.active() {
+                    for i in 0..self.hks.pool().len() {
+                        self.radar
+                            .plot(&self.hks.pool()[i], HK_RADAR_COLOR, &self.world);
                     }
                 }
                 self.radar.plot(&self.ship.sprite, 160, &self.world);
