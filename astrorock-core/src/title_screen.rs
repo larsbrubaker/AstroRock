@@ -556,7 +556,22 @@ impl Widget for TitleScreen {
         let dh = SCREEN_H as f64 * scale;
         let dx = (w - dw) * 0.5;
         let dy = (h - dh) * 0.5;
-        ctx.draw_image_rgba(&self.rgba, SCREEN_W as u32, SCREEN_H as u32, dx, dy, dw, dh);
+        // A fresh Arc every frame, deliberately: the slice variant's
+        // texture cache keys on pointer + head/tail bytes, and a reused
+        // buffer whose corners stay black collides forever — the screen
+        // freezes on the first uploaded frame while the sim runs at
+        // 60fps. The Arc variant keys on pointer identity with proper
+        // Weak-sentinel sweeping, so per-frame Arcs upload per frame.
+        let frame_pixels = std::sync::Arc::new(std::mem::take(&mut self.rgba));
+        ctx.draw_image_rgba_arc(
+            &frame_pixels,
+            SCREEN_W as u32,
+            SCREEN_H as u32,
+            dx,
+            dy,
+            dw,
+            dh,
+        );
     }
 
     fn on_event(&mut self, event: &Event) -> EventResult {
