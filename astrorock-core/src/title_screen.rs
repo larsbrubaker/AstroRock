@@ -1,52 +1,109 @@
-//! # Title Screen (Phase 0 placeholder)
+//! # Title screen — first light for the indexed compositor
 //!
-//! Full-window widget that proves the render pipeline end to end on both
-//! targets: a deterministic star field and the game title, all painted
-//! through agg-gui's [`DrawCtx`]. Replaced by the real `StartScreen` port
-//! in the UI phase; the star-field concept carries over (the original
-//! game draws one behind the world too).
-
-use std::sync::Arc;
+//! Recreates what `AstroRock.cpp`'s `DrawFrame` shows in the teaser
+//! state: the 50-star field plotted in world space through the wrapping
+//! `VirtualFrame` (color 15) and the ASTROROCK logo blitted centered
+//! with `RedBlit` (`BLIT_TRANS_REMAP_BG` ≡ `BLIT_REMAP_DEST_ON_1` with
+//! the `rTransRedPal` table — source index 1 tints the background).
+//! The composed 640x480 indexed buffer converts through the game
+//! palette and presents via agg-gui, aspect-fit with letterboxing.
 
 use agg_gui::color::Color;
 use agg_gui::draw_ctx::DrawCtx;
 use agg_gui::event::{Event, EventResult};
-use agg_gui::geometry::{Rect, Size};
-use agg_gui::text::Font;
+use agg_gui::geometry::{Rect as GuiRect, Size};
 use agg_gui::widget::Widget;
 
-/// Number of background stars on the title screen.
-const STAR_COUNT: u32 = 220;
+use crate::assets;
+use crate::frame::{BlitMode, Frame};
+use crate::palette::Palette;
+use crate::rand::Rand;
+use crate::rect::Rect;
+use crate::virtual_frame::VirtualFrame;
+
+/// `#define NUMSTARS 50`
+const NUM_STARS: usize = 50;
+/// Back-buffer size (`SetTo640X480X8`).
+pub const SCREEN_W: i32 = 640;
+pub const SCREEN_H: i32 = 480;
+/// World size (`CVirtualFrame PlayScreen1(2048, 1024)`).
+pub const WORLD_W: i32 = 2048;
+pub const WORLD_H: i32 = 1024;
 
 pub struct TitleScreen {
-    bounds: Rect,
+    bounds: GuiRect,
     children: Vec<Box<dyn Widget>>,
-    font: Arc<Font>,
+    screen: Frame,
+    world: VirtualFrame,
+    palette: Palette,
+    teaser: Frame,
+    transred: [u8; 256],
+    stars: Vec<(i32, i32)>,
+    rgba: Vec<u8>,
 }
 
 impl TitleScreen {
-    pub fn new(font: Arc<Font>) -> Self {
+    pub fn new() -> Self {
+        // `STARInit`: NetRand(2048) x NetRand(1024); NetRand default-
+        // constructs with seed 0, so the field matches the original's
+        // first frame.
+        let mut net_rand = Rand::new();
+        let stars = (0..NUM_STARS)
+            .map(|_| {
+                let x = net_rand.rand(WORLD_W as u32) as i32;
+                let y = net_rand.rand(WORLD_H as u32) as i32;
+                (x, y)
+            })
+            .collect();
+
+        let mut world = VirtualFrame::new(WORLD_W, WORLD_H);
+        world.set_on_screen_rect(Rect::new(0, 0, SCREEN_W, SCREEN_H));
+        world.move_point_to_center(WORLD_W / 2, WORLD_H / 2);
+
         Self {
-            bounds: Rect::default(),
+            bounds: GuiRect::default(),
             children: Vec::new(),
-            font,
+            screen: Frame::new(SCREEN_W, SCREEN_H),
+            world,
+            palette: assets::game_palette(),
+            teaser: assets::frame_from_indexed_png(assets::TEASER_PNG),
+            transred: assets::remap_table(assets::TRANSRED_PAL),
+            stars,
+            rgba: Vec::new(),
         }
+    }
+
+    /// Compose one frame into the indexed back buffer. Separate from
+    /// `paint` so tests can run it headless.
+    pub fn compose(&mut self) {
+        self.screen.erase(&Rect::new(0, 0, SCREEN_W, SCREEN_H));
+
+        for &(x, y) in &self.stars {
+            self.world.pset(&mut self.screen, x, y, 15);
+        }
+
+        // pScreen->Blit(&TeaserFrame, W/2 - tw/2, H/2 - th/2, &RedBlit)
+        let teaser_bounds = self.teaser.bounds();
+        self.screen.blit(
+            &self.teaser,
+            &teaser_bounds,
+            SCREEN_W / 2 - self.teaser.width / 2,
+            SCREEN_H / 2 - self.teaser.height / 2,
+            BlitMode::RemapDestOn1(&self.transred),
+        );
+    }
+
+    /// The composed indexed back buffer (tests + the `dump_frame`
+    /// inspection example).
+    pub fn screen(&self) -> &Frame {
+        &self.screen
     }
 }
 
-/// Deterministic per-star pseudo-random value in `[0, 1)`.
-///
-/// A fixed integer hash (not `rand`) so the star field is identical on
-/// every run and every platform — matching the project rule that anything
-/// visual derives from deterministic state.
-fn star_param(index: u32, salt: u32) -> f64 {
-    let mut h = index
-        .wrapping_mul(2654435761)
-        .wrapping_add(salt.wrapping_mul(0x9E3779B9));
-    h ^= h >> 16;
-    h = h.wrapping_mul(0x8546_5549);
-    h ^= h >> 13;
-    (h as f64) / (u32::MAX as f64)
+impl Default for TitleScreen {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl Widget for TitleScreen {
@@ -54,11 +111,11 @@ impl Widget for TitleScreen {
         "TitleScreen"
     }
 
-    fn bounds(&self) -> Rect {
+    fn bounds(&self) -> GuiRect {
         self.bounds
     }
 
-    fn set_bounds(&mut self, bounds: Rect) {
+    fn set_bounds(&mut self, bounds: GuiRect) {
         self.bounds = bounds;
     }
 
@@ -71,59 +128,26 @@ impl Widget for TitleScreen {
     }
 
     fn layout(&mut self, available: Size) -> Size {
-        // Fill the window — the title screen owns the whole surface.
         available
     }
 
     fn paint(&mut self, ctx: &mut dyn DrawCtx) {
-        let w = self.bounds.width;
-        let h = self.bounds.height;
+        self.compose();
+        self.palette.frame_to_rgba(&self.screen, &mut self.rgba);
 
-        // Space-black backdrop.
-        ctx.set_fill_color(Color::from_rgb8(4, 4, 12));
+        // Letterbox: aspect-fit the 640x480 game surface in the window.
+        let (w, h) = (self.bounds.width, self.bounds.height);
+        ctx.set_fill_color(Color::from_rgb8(0, 0, 0));
         ctx.begin_path();
         ctx.rect(0.0, 0.0, w, h);
         ctx.fill();
 
-        // Deterministic star field: three brightness tiers.
-        for i in 0..STAR_COUNT {
-            let x = star_param(i, 1) * w;
-            let y = star_param(i, 2) * h;
-            let tier = star_param(i, 3);
-            let (radius, level) = if tier > 0.92 {
-                (1.6, 235)
-            } else if tier > 0.65 {
-                (1.1, 170)
-            } else {
-                (0.7, 100)
-            };
-            ctx.set_fill_color(Color::from_rgb8(level, level, level));
-            ctx.begin_path();
-            ctx.circle(x, y, radius);
-            ctx.fill();
-        }
-
-        // Title + status line, centered. DrawCtx text coordinates are
-        // baseline-anchored in the widget's local Y-up space.
-        ctx.set_font(Arc::clone(&self.font));
-
-        let title = "ASTROROCK";
-        let title_size = (w * 0.09).clamp(32.0, 96.0);
-        ctx.set_font_size(title_size);
-        let title_width = ctx.measure_text(title).map(|m| m.width).unwrap_or(0.0);
-        ctx.set_fill_color(Color::from_rgb8(240, 240, 250));
-        ctx.fill_text(title, (w - title_width) * 0.5, h * 0.55);
-
-        let status = "Rust port under construction";
-        let status_size = (title_size * 0.28).max(14.0);
-        ctx.set_font_size(status_size);
-        let status_width = ctx.measure_text(status).map(|m| m.width).unwrap_or(0.0);
-        ctx.set_fill_color(Color::from_rgb8(140, 150, 180));
-        ctx.fill_text(
-            status,
-            (w - status_width) * 0.5,
-            h * 0.55 - title_size * 0.9,
-        );
+        let scale = (w / SCREEN_W as f64).min(h / SCREEN_H as f64);
+        let dw = SCREEN_W as f64 * scale;
+        let dh = SCREEN_H as f64 * scale;
+        let dx = (w - dw) * 0.5;
+        let dy = (h - dh) * 0.5;
+        ctx.draw_image_rgba(&self.rgba, SCREEN_W as u32, SCREEN_H as u32, dx, dy, dw, dh);
     }
 
     fn on_event(&mut self, _event: &Event) -> EventResult {
@@ -135,26 +159,47 @@ impl Widget for TitleScreen {
 mod tests {
     use super::*;
 
-    /// The star hash must be deterministic (same value for the same
-    /// index/salt) and stay inside [0, 1) so stars land on-screen.
     #[test]
-    fn star_param_is_deterministic_and_unit_range() {
-        for i in 0..STAR_COUNT {
-            for salt in 1..4 {
-                let a = star_param(i, salt);
-                let b = star_param(i, salt);
-                assert_eq!(a, b, "star_param must be pure (index {i}, salt {salt})");
-                assert!((0.0..1.0).contains(&a), "out of range: {a}");
+    fn composes_stars_and_centered_teaser() {
+        let mut t = TitleScreen::new();
+        t.compose();
+        let screen = t.screen();
+
+        // Star pixels (color 15) landed somewhere.
+        let stars = screen.bits.iter().filter(|&&b| b == 15).count();
+        assert!(stars > 0, "no stars plotted");
+        assert!(
+            stars <= NUM_STARS,
+            "stars = {stars} (some may overlap/occlude)"
+        );
+
+        // The teaser occupies the center: some non-zero pixel inside
+        // the centered rect that isn't from the star field alone.
+        let cx = SCREEN_W / 2;
+        let cy = SCREEN_H / 2;
+        let mut non_zero = 0;
+        for y in (cy - 100)..(cy + 100) {
+            for x in (cx - 140)..(cx + 140) {
+                if screen.get(x, y) != 0 {
+                    non_zero += 1;
+                }
             }
         }
+        assert!(
+            non_zero > 1000,
+            "teaser not composed, center pixels = {non_zero}"
+        );
     }
 
-    /// Title screen claims the full window so the backdrop has no gaps.
     #[test]
-    fn layout_fills_available_space() {
-        let mut screen = TitleScreen::new(crate::load_default_font());
-        let size = screen.layout(Size::new(640.0, 480.0));
-        assert_eq!(size.width, 640.0);
-        assert_eq!(size.height, 480.0);
+    fn star_field_is_deterministic() {
+        let a = TitleScreen::new();
+        let b = TitleScreen::new();
+        assert_eq!(a.stars, b.stars);
+        // Seed-0 NetRand first draws, from the locked RNG: x=NetRand(2048).
+        let mut r = Rand::new();
+        let x0 = r.rand(2048) as i32;
+        let y0 = r.rand(1024) as i32;
+        assert_eq!(a.stars[0], (x0, y0));
     }
 }

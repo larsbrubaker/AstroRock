@@ -12,13 +12,14 @@
 //! native + web pipeline. The game systems land phase by phase; see
 //! `todo.md` at the workspace root.
 
+pub mod assets;
 pub mod fixed_trig;
 pub mod frame;
 pub mod heartbeat;
 pub mod palette;
 pub mod rand;
 pub mod rect;
-mod title_screen;
+pub mod title_screen;
 pub mod virtual_frame;
 
 use std::sync::Arc;
@@ -44,6 +45,10 @@ pub fn load_default_font() -> Arc<Font> {
 
 /// Build the shared AstroRock widget tree. Both the native and WASM shells
 /// call this and forward platform input into the returned [`App`].
-pub fn build_astrorock_app(font: Arc<Font>) -> App {
-    App::new(Box::new(TitleScreen::new(font)))
+///
+/// The font isn't consumed yet — the game surface is pure indexed
+/// composition; the bitmap-font UI phase will take it (and until then
+/// shells keep passing it so the signature is stable).
+pub fn build_astrorock_app(_font: Arc<Font>) -> App {
+    App::new(Box::new(TitleScreen::new()))
 }

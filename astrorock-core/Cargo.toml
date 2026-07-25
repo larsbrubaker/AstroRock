@@ -13,6 +13,8 @@ agg-gui = { workspace = true }
 # Table generation for fixed_trig — pure-Rust libm so native and wasm
 # produce identical f32 bits (std trig differs between targets).
 libm = "0.2"
+# Decoding the embedded indexed-PNG assets back to palette indices.
+png = "0.17"
 serde = { workspace = true }
 serde_json = { workspace = true }
 web-time = { workspace = true }

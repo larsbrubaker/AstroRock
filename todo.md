@@ -5,17 +5,12 @@ As items complete, delete them — in the same commit that finishes the
 work. If this file ever describes finished work, that's a bug. Use
 `git log` for history.
 
-## Phase 3 — Indexed compositor
+## Phase 3 — Indexed compositor (remaining)
 
-- `Frame` (8-bit indexed) + `VirtualFrame` (2048×1024 wrapping world,
-  `MovePointToCenter` camera).
-- Blit modes: NORMAL, TRANSPARENT0 (+reverse), REMAP_SOURCE,
-  REMAP_DEST_ON_1, COMBINE_64K translucency; RLE-compressed variants
-  (`Blit.cpp`, `BlitCompressed.hpp`, `FrameCompress.hpp`).
-- Palette: game palette, fades (`FadeBlit[16]`), remap table generation,
-  translucency LUT build (`Palette.cpp`), gamma.
-- Indexed → RGBA present through agg-gui each frame.
-- Milestone: title bitmap + star field rendered native + wasm.
+- Palette fades (`FadeBlit[16]`), gamma, and the runtime translucency
+  LUT build (`MakeTranslucentLookup` + `FindClosestColor` in
+  `Palette.cpp`) — land with the first consumers (screen fades between
+  states; COMBINE_64K users like shields/explosions).
 
 ## Phase 4 — Sprite layer
 
