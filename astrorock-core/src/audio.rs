@@ -67,6 +67,39 @@ impl SfxId {
         }
     }
 
+    /// The embedded mp3 for this effect — shared by every platform
+    /// sink so the stem→bytes mapping exists exactly once.
+    pub fn bytes(self) -> &'static [u8] {
+        macro_rules! sfx {
+            ($($variant:ident => $stem:literal),+ $(,)?) => {
+                match self {
+                    $(SfxId::$variant => include_bytes!(concat!(
+                        "../../assets/sfx/", $stem, ".mp3"
+                    )) as &'static [u8],)+
+                }
+            };
+        }
+        sfx! {
+            BigExplosion => "explo01",
+            MedExplosion => "explo02",
+            ShotNormal => "shot01",
+            ShotPower => "shot02",
+            ShotSuper => "shot03",
+            ShotHk => "shothk",
+            BombFire => "bomb",
+            ChangeGun => "gunchng",
+            Goody => "goody",
+            VoiceBitchen => "bitchen",
+            VoiceHose => "hose",
+            VoiceStick => "stick",
+            VoiceSugar => "sugar",
+            VoiceTKill => "tkill",
+            VoiceKickAss => "kass",
+            VoiceAhYah => "ahyah",
+            Shimmer => "shimmer",
+        }
+    }
+
     /// Every effect a sink should preload.
     pub fn all() -> &'static [SfxId] {
         &[
@@ -98,6 +131,21 @@ pub enum LoopKind {
     Thrust,
     /// `pShieldSound` (shield), looping while the shield holds.
     Shield,
+}
+
+impl LoopKind {
+    /// The embedded mp3 for this loop.
+    pub fn bytes(self) -> &'static [u8] {
+        match self {
+            LoopKind::Thrust => include_bytes!("../../assets/sfx/thrust01.mp3"),
+            LoopKind::Shield => include_bytes!("../../assets/sfx/shield.mp3"),
+        }
+    }
+
+    /// Every loop a sink should preload.
+    pub fn all() -> &'static [LoopKind] {
+        &[LoopKind::Thrust, LoopKind::Shield]
+    }
 }
 
 /// What the platform shells implement.

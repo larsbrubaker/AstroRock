@@ -7,7 +7,9 @@
 
 #![cfg(target_arch = "wasm32")]
 
-use astrorock_core::{build_astrorock_app, load_default_font};
+mod audio;
+
+use astrorock_core::{build_astrorock_app_with_audio, load_default_font};
 use demo_wgpu::web_shell;
 use wasm_bindgen::prelude::*;
 
@@ -15,7 +17,11 @@ use wasm_bindgen::prelude::*;
 pub fn start() {
     web_shell::start(
         "astrorock-canvas",
-        || build_astrorock_app(load_default_font()),
+        || {
+            let sink = audio::WebAudio::new()
+                .map(|a| Box::new(a) as Box<dyn astrorock_core::audio::AudioSink>);
+            build_astrorock_app_with_audio(load_default_font(), sink)
+        },
         // The 30 Hz simulation runs continuously — keep the rAF loop hot.
         || web_shell::mark_dirty(),
     );

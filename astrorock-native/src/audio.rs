@@ -1,9 +1,10 @@
 //! # Native audio sink — rodio
 //!
-//! Implements [`AudioSink`] with rodio: every SFX mp3 is decoded once
-//! into a buffered source at startup; one-shots spawn detached sinks,
-//! loops hold paused sinks toggled by state. Pan is accepted but not
-//! yet spatialized (todo.md — the original panned by screen x).
+//! Implements [`AudioSink`] with rodio: every SFX mp3 (embedded by
+//! `astrorock_core::audio`) is decoded once into a buffered source at
+//! startup; one-shots spawn detached sinks, loops hold paused sinks
+//! toggled by state. Pan is accepted but not yet spatialized (todo.md
+//! — the original panned by screen x).
 
 use std::collections::HashMap;
 use std::io::Cursor;
@@ -13,45 +14,6 @@ use rodio::source::{Buffered, Source};
 use rodio::{Decoder, OutputStream, OutputStreamHandle, Sink};
 
 type Sfx = Buffered<Decoder<Cursor<&'static [u8]>>>;
-
-/// The embedded mp3 for each effect.
-fn sfx_bytes(id: SfxId) -> &'static [u8] {
-    macro_rules! sfx {
-        ($($variant:ident => $stem:literal),+ $(,)?) => {
-            match id {
-                $(SfxId::$variant => include_bytes!(concat!(
-                    "../../assets/sfx/", $stem, ".mp3"
-                )) as &'static [u8],)+
-            }
-        };
-    }
-    sfx! {
-        BigExplosion => "explo01",
-        MedExplosion => "explo02",
-        ShotNormal => "shot01",
-        ShotPower => "shot02",
-        ShotSuper => "shot03",
-        ShotHk => "shothk",
-        BombFire => "bomb",
-        ChangeGun => "gunchng",
-        Goody => "goody",
-        VoiceBitchen => "bitchen",
-        VoiceHose => "hose",
-        VoiceStick => "stick",
-        VoiceSugar => "sugar",
-        VoiceTKill => "tkill",
-        VoiceKickAss => "kass",
-        VoiceAhYah => "ahyah",
-        Shimmer => "shimmer",
-    }
-}
-
-fn loop_bytes(which: LoopKind) -> &'static [u8] {
-    match which {
-        LoopKind::Thrust => include_bytes!("../../assets/sfx/thrust01.mp3"),
-        LoopKind::Shield => include_bytes!("../../assets/sfx/shield.mp3"),
-    }
-}
 
 pub struct RodioAudio {
     // Dropping the stream stops all audio — keep it alive.
@@ -67,7 +29,7 @@ impl RodioAudio {
         let (stream, handle) = OutputStream::try_default().ok()?;
         let mut buffers = HashMap::new();
         for &id in SfxId::all() {
-            match Decoder::new(Cursor::new(sfx_bytes(id))) {
+            match Decoder::new(Cursor::new(id.bytes())) {
                 Ok(decoder) => {
                     buffers.insert(id, decoder.buffered());
                 }
@@ -96,7 +58,7 @@ impl AudioSink for RodioAudio {
     fn set_loop(&mut self, which: LoopKind, active: bool) {
         let sink = self.loops.entry(which).or_insert_with(|| {
             let sink = Sink::try_new(&self.handle).expect("loop sink");
-            if let Ok(decoder) = Decoder::new(Cursor::new(loop_bytes(which))) {
+            if let Ok(decoder) = Decoder::new(Cursor::new(which.bytes())) {
                 sink.append(decoder.buffered().repeat_infinite());
             }
             sink.pause();
