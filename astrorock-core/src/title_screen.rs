@@ -42,6 +42,7 @@ use crate::rect::Rect;
 use crate::rocks::Rocks;
 use crate::spawnfx::{CompletedSpawn, SpawnFx, SpawnKind};
 use crate::spikeballs::{SpikeBalls, SPIKEBALL_RADAR_COLOR};
+use crate::statbar::StatBar;
 use crate::thrust::Thrust;
 use crate::virtual_frame::VirtualFrame;
 
@@ -103,6 +104,7 @@ pub struct TitleScreen {
     ship: PlayerShip,
     thrust: Thrust,
     radar: Radar,
+    statbar: StatBar,
     level: usize,
     local_player_dead: bool,
     audio: Option<Box<dyn AudioSink>>,
@@ -126,8 +128,12 @@ impl TitleScreen {
             })
             .collect();
 
+        // `OnScreenRect`: the play field is the screen above the stat
+        // bar (640x384), set once the bar art is loaded — exactly like
+        // `StatBarTop = pScreen->Height - StatBarFrame.Height`.
+        let statbar = StatBar::new();
         let mut world = VirtualFrame::new(WORLD_W, WORLD_H);
-        world.set_on_screen_rect(Rect::new(0, 0, SCREEN_W, SCREEN_H));
+        world.set_on_screen_rect(Rect::new(0, 0, SCREEN_W, SCREEN_H - statbar.height()));
         world.move_point_to_center(WORLD_W / 2, WORLD_H / 2);
 
         let mut rocks = Rocks::new();
@@ -163,6 +169,7 @@ impl TitleScreen {
             ship: PlayerShip::new(),
             thrust: Thrust::new(),
             radar: Radar::new(),
+            statbar,
             level: 0,
             local_player_dead: false,
             audio,
@@ -383,7 +390,10 @@ impl TitleScreen {
                 .move_point_to_center(self.ship.sprite.x_pos as i32, self.ship.sprite.y_pos as i32);
         }
 
-        self.screen.erase(&Rect::new(0, 0, SCREEN_W, SCREEN_H));
+        // `pScreen->Erase(&OnScreenRect)` — only the play field; the
+        // stat bar recomposes over the bottom every frame.
+        self.screen
+            .erase(&Rect::new(0, 0, SCREEN_W, SCREEN_H - self.statbar.height()));
 
         for &(x, y) in &self.stars {
             self.world.pset(&mut self.screen, x, y, 15);
@@ -410,6 +420,11 @@ impl TitleScreen {
 
         match self.state {
             Screen::Attract => {
+                // The original attract is demo playback — the full game
+                // view with the stat bar. Ours shows it with the idle
+                // (zeroed) local player until Phase 9 demos land.
+                self.statbar.draw(&mut self.screen, &self.ship, 0);
+
                 // pScreen->Blit(&PressEnterFrame, centered, &RedBlit)
                 let art_bounds = self.press_enter.bounds();
                 self.screen.blit(
@@ -424,8 +439,10 @@ impl TitleScreen {
                 self.ship
                     .draw(&self.world, &mut self.screen, &mut self.thrust);
 
-                // Radar: rocks + player blips, bottom center for now
-                // (the stat bar arrives with the UI phase).
+                // `DrawStats` runs last in DrawPlayField; the radar
+                // draws after it, onto the bar (`RadarDraw(255,395)`).
+                self.statbar
+                    .draw(&mut self.screen, &self.ship, self.level as u32);
                 for i in 0..self.rocks.big().len() {
                     self.radar.plot(&self.rocks.big()[i], 15, &self.world);
                 }
@@ -469,8 +486,7 @@ impl TitleScreen {
                     );
                 }
                 self.radar.plot(&self.ship.sprite, 160, &self.world);
-                self.radar
-                    .draw(&mut self.screen, SCREEN_W / 2 - 64, SCREEN_H - 66);
+                self.radar.draw(&mut self.screen, 255, 395);
             }
         }
     }

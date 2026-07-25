@@ -23,6 +23,32 @@ pub const TRANSRED_PAL: &[u8] = include_bytes!("../../assets/palettes/transred.p
 /// decades gone).
 pub const PRESS_ENTER_PNG: &[u8] = include_bytes!("../../assets/interfac/pressent.png");
 
+/// The four game fonts — fixed-width sheets sliced by `font.rs`.
+/// `rCourierFont`, `rNumbersFont`, `rShotNumFont`, `rAstroTexFont`.
+pub const COURIER_FONT_PNG: &[u8] = include_bytes!("../../assets/interfac/courier.png");
+pub const NUMBERS_FONT_PNG: &[u8] = include_bytes!("../../assets/interfac/numbers.png");
+pub const SHOTNUM_FONT_PNG: &[u8] = include_bytes!("../../assets/interfac/shotnum.png");
+pub const ASTROTEX_FONT_PNG: &[u8] = include_bytes!("../../assets/interfac/astrotex.png");
+
+/// Stat bar art (`DrawStats`): the bar itself plus meters, power-up
+/// icons, and the extra-ship icon.
+pub const STATBAR_PNG: &[u8] = include_bytes!("../../assets/interfac/statbar.png");
+pub const HEALTH_PNG: &[u8] = include_bytes!("../../assets/interfac/health.png");
+pub const HEALTHB_PNG: &[u8] = include_bytes!("../../assets/interfac/healthb.png");
+/// `rShieldBmp` the METER FILL (not the shield halo sprite).
+pub const SHIELD_STAT_PNG: &[u8] = include_bytes!("../../assets/interfac/shield.png");
+pub const SHIELDB_PNG: &[u8] = include_bytes!("../../assets/interfac/shieldb.png");
+pub const YGSTAT_PNG: &[u8] = include_bytes!("../../assets/interfac/ygstat.png");
+pub const RGSTAT_PNG: &[u8] = include_bytes!("../../assets/interfac/rgstat.png");
+pub const BOMBSTAT_PNG: &[u8] = include_bytes!("../../assets/interfac/bombstat.png");
+pub const RAPDSTAT_PNG: &[u8] = include_bytes!("../../assets/interfac/rapdstat.png");
+pub const SPRDSTAT_PNG: &[u8] = include_bytes!("../../assets/interfac/sprdstat.png");
+pub const LIVES_PNG: &[u8] = include_bytes!("../../assets/interfac/lives.png");
+
+/// `rPlrRedPal` — player 0's ship recolor (`ShipBlit[0]`,
+/// `PlyrColorTable` in players.cpp).
+pub const PLRRED_PAL: &[u8] = include_bytes!("../../assets/palettes/plrred.pal");
+
 /// `rGloop2Pal` / `rGloop3Pal` — gloop tier recolor remap tables.
 pub const GLOOP2_PAL: &[u8] = include_bytes!("../../assets/palettes/gloop2.pal");
 pub const GLOOP3_PAL: &[u8] = include_bytes!("../../assets/palettes/gloop3.pal");

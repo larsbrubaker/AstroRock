@@ -20,9 +20,7 @@ work. If this file ever describes finished work, that's a bug. Use
   rock on the spawn point kills you there too.)
 - `players.cpp` remainder: the full `UpdateAll` ordering (speaker
   sprite, hurt/carnage voice timing via LocalRand, untouched/survival
-  bonus flags), `PlayersCollidePlayers` (deferred with net), stat bar
-  (`printStat`, lives/health/shield readouts — needs bitmap fonts from
-  Phase 8; radar is placed placeholder-center-bottom until then).
+  bonus flags), `PlayersCollidePlayers` (deferred with net).
 - Intermission/level-advance flow and score bonuses from
   `AstroRock.cpp` (currently levels hard-cut to the next reset).
 - Exact `UpdateAll` call order pass — align update/collide sequence

@@ -95,6 +95,12 @@ impl PlayerShip {
         sprite.frame_advance = 0.0;
         sprite.x_pos = 320.0;
         sprite.y_pos = 240.0;
+        // `ShipBlit[0]` (players.cpp): the local player's hull draws
+        // through the rPlrRedPal recolor; the stat bar's extra-ship
+        // icons use the same table.
+        sprite.blit = crate::sprite::SpriteBlit::RemapSource(std::rc::Rc::new(
+            crate::assets::remap_table(crate::assets::PLRRED_PAL),
+        ));
 
         let mut shield_sprite = Sprite::new();
         shield_sprite.set_sequence(sequence::shield());
