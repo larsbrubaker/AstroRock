@@ -186,6 +186,7 @@ impl PlayerShip {
         world: &VirtualFrame,
         explosions: &mut Explosions,
         events: &mut Events,
+        stats: &mut crate::intermission::LevelStats,
     ) {
         self.shots[self.cur_shots].update(clip, rand);
         self.bombs.update(clip, rand, world, explosions, events);
@@ -246,6 +247,8 @@ impl PlayerShip {
             }
 
             if num_fired != 0 {
+                // `GlobalNumShotsFired += numfired` (local player).
+                stats.shots_fired += num_fired as i32;
                 if self.num_spreads != 0 {
                     self.num_spreads -= 1;
                 }
@@ -405,12 +408,13 @@ mod tests {
     #[test]
     fn thrust_accelerates_along_facing_with_friction() {
         let (mut ship, world, mut ex, mut ev, mut rand, clip) = setup();
+        let mut stats = crate::intermission::LevelStats::new();
         ship.reset(3);
         ship.set_inputs(ShipInputs {
             thrust: true,
             ..Default::default()
         });
-        ship.update(&clip, &mut rand, &world, &mut ex, &mut ev);
+        ship.update(&clip, &mut rand, &world, &mut ex, &mut ev, &mut stats);
         // Facing up (frame 0): pure -y acceleration, then friction.
         assert_eq!(ship.sprite.x_delta, 0.98f32 * 0.0);
         let expected = 0.98f32 * (0.0 - fixed_trig::cos_d(0) * 1.2);
@@ -421,12 +425,13 @@ mod tests {
     #[test]
     fn fire_is_edge_triggered_without_rapids() {
         let (mut ship, world, mut ex, mut ev, mut rand, clip) = setup();
+        let mut stats = crate::intermission::LevelStats::new();
         ship.reset(3);
         ship.set_inputs(ShipInputs {
             fire: true,
             ..Default::default()
         });
-        ship.update(&clip, &mut rand, &world, &mut ex, &mut ev);
+        ship.update(&clip, &mut rand, &world, &mut ex, &mut ev, &mut stats);
         assert_eq!(
             ship.shots[NORMAL_SHOTS]
                 .iter()
@@ -435,7 +440,7 @@ mod tests {
             1
         );
         // Held fire doesn't fire again…
-        ship.update(&clip, &mut rand, &world, &mut ex, &mut ev);
+        ship.update(&clip, &mut rand, &world, &mut ex, &mut ev, &mut stats);
         assert_eq!(
             ship.shots[NORMAL_SHOTS]
                 .iter()
@@ -445,12 +450,12 @@ mod tests {
         );
         // …until released and pressed again.
         ship.set_inputs(ShipInputs::default());
-        ship.update(&clip, &mut rand, &world, &mut ex, &mut ev);
+        ship.update(&clip, &mut rand, &world, &mut ex, &mut ev, &mut stats);
         ship.set_inputs(ShipInputs {
             fire: true,
             ..Default::default()
         });
-        ship.update(&clip, &mut rand, &world, &mut ex, &mut ev);
+        ship.update(&clip, &mut rand, &world, &mut ex, &mut ev, &mut stats);
         assert_eq!(
             ship.shots[NORMAL_SHOTS]
                 .iter()
@@ -463,13 +468,14 @@ mod tests {
     #[test]
     fn shields_drain_while_held() {
         let (mut ship, world, mut ex, mut ev, mut rand, clip) = setup();
+        let mut stats = crate::intermission::LevelStats::new();
         ship.reset(3);
         let start = ship.num_shields;
         ship.set_inputs(ShipInputs {
             shield: true,
             ..Default::default()
         });
-        ship.update(&clip, &mut rand, &world, &mut ex, &mut ev);
+        ship.update(&clip, &mut rand, &world, &mut ex, &mut ev, &mut stats);
         assert!(ship.shield_on);
         assert_eq!(ship.num_shields, start - 1);
     }
@@ -477,10 +483,11 @@ mod tests {
     #[test]
     fn power_shot_pickup_switches_gun_between_volleys() {
         let (mut ship, world, mut ex, mut ev, mut rand, clip) = setup();
+        let mut stats = crate::intermission::LevelStats::new();
         ship.reset(3);
         ship.add_power_shots(2);
         // Next quiet update performs the switch.
-        ship.update(&clip, &mut rand, &world, &mut ex, &mut ev);
+        ship.update(&clip, &mut rand, &world, &mut ex, &mut ev, &mut stats);
         assert_eq!(ship.cur_shots, POWER_SHOTS);
         assert!(ev.drain().any(|e| matches!(e, GameEvent::SfxChangeGun)));
 
@@ -490,14 +497,14 @@ mod tests {
                 fire: true,
                 ..Default::default()
             });
-            ship.update(&clip, &mut rand, &world, &mut ex, &mut ev);
+            ship.update(&clip, &mut rand, &world, &mut ex, &mut ev, &mut stats);
             ship.set_inputs(ShipInputs::default());
-            ship.update(&clip, &mut rand, &world, &mut ex, &mut ev);
+            ship.update(&clip, &mut rand, &world, &mut ex, &mut ev, &mut stats);
         }
         assert_eq!(ship.num_power_shots, 0);
         // Wait for shots to clear, then the switch back happens.
         for _ in 0..40 {
-            ship.update(&clip, &mut rand, &world, &mut ex, &mut ev);
+            ship.update(&clip, &mut rand, &world, &mut ex, &mut ev, &mut stats);
         }
         assert_eq!(ship.cur_shots, NORMAL_SHOTS);
     }
@@ -505,17 +512,18 @@ mod tests {
     #[test]
     fn bombs_are_edge_triggered_and_limited() {
         let (mut ship, world, mut ex, mut ev, mut rand, clip) = setup();
+        let mut stats = crate::intermission::LevelStats::new();
         ship.reset(3);
         ship.add_bombs(1);
         ship.set_inputs(ShipInputs {
             bomb: true,
             ..Default::default()
         });
-        ship.update(&clip, &mut rand, &world, &mut ex, &mut ev);
+        ship.update(&clip, &mut rand, &world, &mut ex, &mut ev, &mut stats);
         assert_eq!(ship.num_bombs, 0);
         assert_eq!(ship.bombs.iter().filter(|s| s.visible).count(), 1);
         // Held key + no bombs left: nothing more launches.
-        ship.update(&clip, &mut rand, &world, &mut ex, &mut ev);
+        ship.update(&clip, &mut rand, &world, &mut ex, &mut ev, &mut stats);
         assert_eq!(ship.bombs.iter().filter(|s| s.visible).count(), 1);
     }
 }

@@ -73,6 +73,56 @@ impl Default for Radar {
     }
 }
 
+/// The `DrawPlayField` radar-collection pass: every live object plots
+/// with its shipped blip color (rocks 15/145/147, gloops 104, plus the
+/// per-enemy `*_RADAR_COLOR`s and the player at 160).
+#[allow(clippy::too_many_arguments)]
+pub fn plot_world(
+    radar: &mut Radar,
+    world: &VirtualFrame,
+    rocks: &crate::rocks::Rocks,
+    gloops: &crate::gloops::Gloops,
+    hks: &crate::hks::Hks,
+    bombers: &crate::bombers::Bombers,
+    spikeballs: &crate::spikeballs::SpikeBalls,
+    fastdeaths: &crate::fastdeaths::FastDeaths,
+    ship: &Sprite,
+) {
+    for s in rocks.big() {
+        radar.plot(s, 15, world);
+    }
+    for s in rocks.med() {
+        radar.plot(s, 145, world);
+    }
+    for s in rocks.lit() {
+        radar.plot(s, 147, world);
+    }
+    if gloops.active() {
+        for s in gloops.pool() {
+            radar.plot(s, 104, world);
+        }
+    }
+    if hks.active() {
+        for s in hks.pool() {
+            radar.plot(s, crate::hks::HK_RADAR_COLOR, world);
+        }
+    }
+    if bombers.active() {
+        for s in bombers.pool() {
+            radar.plot(s, crate::bombers::BOMBER_RADAR_COLOR, world);
+        }
+    }
+    if spikeballs.active() {
+        for s in spikeballs.pool() {
+            radar.plot(s, crate::spikeballs::SPIKEBALL_RADAR_COLOR, world);
+        }
+    }
+    for s in fastdeaths.pool() {
+        radar.plot(s, crate::fastdeaths::FAST_DEATH_RADAR_COLOR, world);
+    }
+    radar.plot(ship, 160, world);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -37,6 +37,7 @@ pub enum BlitMode<'a> {
     Combine64KReverse(&'a [u8; 65536]),
 }
 
+#[derive(Clone)]
 pub struct Frame {
     pub width: i32,
     pub height: i32,
@@ -114,6 +115,26 @@ impl Frame {
     /// `CFrame::Erase` — fill with color 0 (BLACK).
     pub fn erase(&mut self, rect: &Rect) {
         self.fill_box(rect, 0);
+    }
+
+    /// `CFrame::Box` — 1px rectangle outline (the intermission iris).
+    pub fn box_outline(&mut self, rect: &Rect, color: u8) {
+        self.fill_box(
+            &Rect::new(rect.left, rect.top, rect.right, rect.top + 1),
+            color,
+        );
+        self.fill_box(
+            &Rect::new(rect.left, rect.bottom - 1, rect.right, rect.bottom),
+            color,
+        );
+        self.fill_box(
+            &Rect::new(rect.left, rect.top, rect.left + 1, rect.bottom),
+            color,
+        );
+        self.fill_box(
+            &Rect::new(rect.right - 1, rect.top, rect.right, rect.bottom),
+            color,
+        );
     }
 
     pub fn bounds(&self) -> Rect {

@@ -14,6 +14,7 @@ use crate::fastdeaths::{FastDeaths, FAST_DEATH_COLLIDE_DAMAGE};
 use crate::gloops::{Gloops, GLOOP_COLLIDE_DAMAGE};
 use crate::goodies::Goodies;
 use crate::hks::{Hks, HK_COLLIDE_DAMAGE};
+use crate::intermission::LevelStats;
 use crate::pship::PlayerShip;
 use crate::rand::Rand;
 use crate::rect::Rect;
@@ -38,13 +39,21 @@ pub struct CollideCtx<'a> {
     pub net_rand: &'a mut Rand,
     /// Little-rock deaths roll goody drops inline (`AddGoody`).
     pub goodies: &'a mut Goodies,
+    /// Intermission bookkeeping (`TallyShotHits`, `DamagePlayer`,
+    /// `KillPlayer` bonus zeroing).
+    pub stats: &'a mut LevelStats,
     pub clip: Rect,
 }
 
 /// `DamagePlayer`/`KillPlayer` — returns true if the ship died.
 pub fn damage_player(ship: &mut PlayerShip, damage: u32, ctx: &mut CollideCtx) -> bool {
+    // "if it's the local player he doesn't get Untouched bonus"
+    ctx.stats.untouched = 0;
     if damage >= ship.sprite.hp {
         ship.sprite.hp = 0;
+        // `KillPlayer`: survival bonus gone, a life lost.
+        ctx.stats.survival = 0;
+        ctx.stats.lives_lost += 1;
         ctx.explosions
             .explo_sprite(&mut ship.sprite, ctx.world, ctx.events);
         ship.remove_ship();
@@ -109,6 +118,7 @@ pub fn player_vs_rocks(ship: &mut PlayerShip, rocks: &mut Rocks, ctx: &mut Colli
                     ship.add_score(score);
                     let cur = ship.cur_shots;
                     ship.shots[cur].hide(si);
+                    ctx.stats.shots_hit += 1;
                 }
             }
         }
@@ -184,6 +194,7 @@ pub fn player_vs_gloops(ship: &mut PlayerShip, gloops: &mut Gloops, ctx: &mut Co
                 ship.add_score(score);
                 let cur = ship.cur_shots;
                 ship.shots[cur].hide(si);
+                ctx.stats.shots_hit += 1;
             }
         }
     }
@@ -292,6 +303,7 @@ pub fn player_vs_hks(ship: &mut PlayerShip, hks: &mut Hks, ctx: &mut CollideCtx)
                         );
                         let cur = ship.cur_shots;
                         ship.shots[cur].hide(ps);
+                        ctx.stats.shots_hit += 1;
                     }
                 }
             }
@@ -310,6 +322,7 @@ pub fn player_vs_hks(ship: &mut PlayerShip, hks: &mut Hks, ctx: &mut CollideCtx)
                     ship.add_score(score);
                     let cur = ship.cur_shots;
                     ship.shots[cur].hide(ps);
+                    ctx.stats.shots_hit += 1;
                 }
             }
         }
@@ -449,6 +462,7 @@ pub fn player_vs_bombers(
                         );
                         let cur = ship.cur_shots;
                         ship.shots[cur].hide(ps);
+                        ctx.stats.shots_hit += 1;
                     }
                 }
             }
@@ -468,6 +482,7 @@ pub fn player_vs_bombers(
                     ship.add_score(score);
                     let cur = ship.cur_shots;
                     ship.shots[cur].hide(ps);
+                    ctx.stats.shots_hit += 1;
                 }
             }
         }
@@ -603,6 +618,7 @@ pub fn player_vs_spikeballs(
                 ship.add_score(score);
                 let cur = ship.cur_shots;
                 ship.shots[cur].hide(ps);
+                ctx.stats.shots_hit += 1;
             }
         }
     }
@@ -684,6 +700,7 @@ pub fn player_vs_fastdeaths(
                 ship.add_score(score);
                 let cur = ship.cur_shots;
                 ship.shots[cur].hide(ps);
+                ctx.stats.shots_hit += 1;
             }
         }
     }

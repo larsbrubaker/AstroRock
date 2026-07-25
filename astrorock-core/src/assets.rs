@@ -49,6 +49,11 @@ pub const LIVES_PNG: &[u8] = include_bytes!("../../assets/interfac/lives.png");
 /// `PlyrColorTable` in players.cpp).
 pub const PLRRED_PAL: &[u8] = include_bytes!("../../assets/palettes/plrred.pal");
 
+/// `rTallywinBmp` — the intermission tally window.
+pub const TALLYWIN_PNG: &[u8] = include_bytes!("../../assets/interfac/tallywin.png");
+/// `rEndgameBmp` — the GAME OVER overlay.
+pub const ENDGAME_PNG: &[u8] = include_bytes!("../../assets/interfac/endgame.png");
+
 /// `rGloop2Pal` / `rGloop3Pal` — gloop tier recolor remap tables.
 pub const GLOOP2_PAL: &[u8] = include_bytes!("../../assets/palettes/gloop2.pal");
 pub const GLOOP3_PAL: &[u8] = include_bytes!("../../assets/palettes/gloop3.pal");

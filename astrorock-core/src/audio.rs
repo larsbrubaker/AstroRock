@@ -29,6 +29,8 @@ pub enum SfxId {
     ShotHk,
     BombFire,
     ChangeGun,
+    /// The intermission bonus blip (`rBonusSnd`).
+    Bonus,
     /// The generic pickup jingle (`rGoodySnd`).
     Goody,
     /// Per-goody voice lines.
@@ -55,6 +57,7 @@ impl SfxId {
             SfxId::ShotHk => "shothk",
             SfxId::BombFire => "bomb",
             SfxId::ChangeGun => "gunchng",
+            SfxId::Bonus => "bonus",
             SfxId::Goody => "goody",
             SfxId::VoiceBitchen => "bitchen",
             SfxId::VoiceHose => "hose",
@@ -88,6 +91,7 @@ impl SfxId {
             ShotHk => "shothk",
             BombFire => "bomb",
             ChangeGun => "gunchng",
+            Bonus => "bonus",
             Goody => "goody",
             VoiceBitchen => "bitchen",
             VoiceHose => "hose",
@@ -111,6 +115,7 @@ impl SfxId {
             SfxId::ShotHk,
             SfxId::BombFire,
             SfxId::ChangeGun,
+            SfxId::Bonus,
             SfxId::Goody,
             SfxId::VoiceBitchen,
             SfxId::VoiceHose,
@@ -190,6 +195,7 @@ pub fn dispatch(events: &mut Events, sink: &mut dyn AudioSink, local_rand: &mut 
             }
             GameEvent::SfxBombFire => sink.play(SfxId::BombFire, 0),
             GameEvent::SfxChangeGun => sink.play(SfxId::ChangeGun, 0),
+            GameEvent::SfxBonus => sink.play(SfxId::Bonus, 0),
             GameEvent::GoodyCollected { kind } => {
                 if local_rand.rand(4) != 0 {
                     sink.play(SfxId::Goody, 0);

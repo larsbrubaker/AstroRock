@@ -52,10 +52,9 @@ pub fn paint(ctx: &mut dyn DrawCtx, w: f64, h: f64, music_on: bool, sfx_on: bool
 
     // Aspect-fit the game surface in the area above the bar.
     let game_h = (h - BAR_H).max(1.0);
-    let scale = (w / crate::title_screen::SCREEN_W as f64)
-        .min(game_h / crate::title_screen::SCREEN_H as f64);
-    let dw = crate::title_screen::SCREEN_W as f64 * scale;
-    let dh = crate::title_screen::SCREEN_H as f64 * scale;
+    let scale = (w / crate::game::SCREEN_W as f64).min(game_h / crate::game::SCREEN_H as f64);
+    let dw = crate::game::SCREEN_W as f64 * scale;
+    let dh = crate::game::SCREEN_H as f64 * scale;
     let dx = (w - dw) * 0.5;
     let dy = BAR_H + (game_h - dh) * 0.5;
 

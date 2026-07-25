@@ -6,16 +6,16 @@
 //! ```
 
 use astrorock_core::assets;
-use astrorock_core::title_screen::TitleScreen;
+use astrorock_core::game::Game;
 
 fn main() {
     let path = std::env::args()
         .nth(1)
         .unwrap_or_else(|| "title_frame.png".to_string());
 
-    let mut title = TitleScreen::new();
-    title.compose();
-    let screen = title.screen();
+    let mut game = Game::new(None);
+    game.compose();
+    let screen = game.screen();
     let mut rgba = Vec::new();
     assets::game_palette().frame_to_rgba(screen, &mut rgba);
 
