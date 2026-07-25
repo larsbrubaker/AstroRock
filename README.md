@@ -5,15 +5,19 @@ asteroids game by Lars Brubaker — rebuilt on
 [agg-gui](https://github.com/larsbrubaker/agg-gui), running native
 (Windows/macOS/Linux) and in the browser via WebAssembly.
 
-**Play it:** https://larsbrubaker.github.io/AstroRock/
+[![Play AstroRock in the browser](hero_readme.jpg)](https://larsbrubaker.github.io/AstroRock/)
+
+**▶ Play it:** https://larsbrubaker.github.io/AstroRock/
 
 ## Status
 
-Early port. The title screen is live; the game systems are being ported
-phase by phase from the original C++ (see `todo.md`). The port is
-deterministic-faithful: 16.16 fixed-point math, the original RNG, and
-the 30 Hz lockstep step are reproduced bit-exactly so the original
-recorded demos replay as the regression suite.
+Playable port in progress. The single-player loop is live — ship,
+weapons, rocks, all five enemy types, goodies, the stat bar HUD,
+intermission bonuses, sound and music — with the remaining systems
+ported phase by phase from the original C++ (see `todo.md`). The port
+is deterministic-faithful: the original's f32 expression shapes, RNG,
+and 30 Hz lockstep are reproduced exactly so recorded demos can replay
+as the regression suite.
 
 ## Building
 

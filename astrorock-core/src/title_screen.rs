@@ -5,24 +5,32 @@
 //! frame each paint: advance the sim, compose, palette-convert to
 //! RGBA, and upload inside the themed chrome (chrome.rs).
 
+use std::sync::Arc;
+
 use agg_gui::draw_ctx::DrawCtx;
-use agg_gui::event::{Event, EventResult};
+use agg_gui::event::{Event, EventResult, Key};
 use agg_gui::geometry::{Rect as GuiRect, Size};
+use agg_gui::text::Font;
 use agg_gui::widget::Widget;
 
 use crate::audio::AudioSink;
 use crate::chrome;
 use crate::game::{Game, SCREEN_H, SCREEN_W};
 
+/// Font Awesome, for the chrome-button icons.
+const ICON_FONT_BYTES: &[u8] = include_bytes!("../assets/fa.ttf");
+
 pub struct TitleScreen {
     bounds: GuiRect,
     children: Vec<Box<dyn Widget>>,
     game: Game,
     rgba: Vec<u8>,
-    /// Chrome-bar toggle hit rects in widget coords — recomputed each
+    icons: Arc<Font>,
+    /// Chrome button hit rects in widget coords — recomputed each
     /// paint, checked on MouseDown.
     music_btn: GuiRect,
     sfx_btn: GuiRect,
+    fullscreen_btn: GuiRect,
 }
 
 impl TitleScreen {
@@ -36,8 +44,10 @@ impl TitleScreen {
             children: Vec::new(),
             game: Game::new(audio),
             rgba: Vec::new(),
+            icons: Arc::new(Font::from_slice(ICON_FONT_BYTES).expect("fa.ttf parses")),
             music_btn: GuiRect::default(),
             sfx_btn: GuiRect::default(),
+            fullscreen_btn: GuiRect::default(),
         }
     }
 }
@@ -90,12 +100,13 @@ impl Widget for TitleScreen {
             .palette
             .frame_to_rgba(self.game.screen(), &mut self.rgba);
 
-        // Window chrome (chrome.rs): backdrop, control bar, buttons,
-        // and the frame; it returns where the game surface goes.
+        // Window chrome (chrome.rs): backdrop, rail/bar, buttons, and
+        // the frame; it returns where the game surface goes.
         let (w, h) = (self.bounds.width, self.bounds.height);
-        let layout = chrome::paint(ctx, w, h, self.game.music_on, self.game.sfx_on);
+        let layout = chrome::paint(ctx, w, h, self.game.music_on, self.game.sfx_on, &self.icons);
         self.music_btn = layout.music_btn;
         self.sfx_btn = layout.sfx_btn;
+        self.fullscreen_btn = layout.fullscreen_btn;
         let (dx, dy, dw, dh) = layout.game;
 
         // A fresh Arc every frame, deliberately: the slice variant's
@@ -118,7 +129,12 @@ impl Widget for TitleScreen {
 
     fn on_event(&mut self, event: &Event) -> EventResult {
         match event {
-            Event::KeyDown { key, .. } => {
+            Event::KeyDown { key, modifiers } => {
+                // Alt+Enter: the classic Windows fullscreen toggle.
+                if *key == Key::Enter && modifiers.alt {
+                    agg_gui::fullscreen::request_toggle();
+                    return EventResult::Consumed;
+                }
                 if self.game.set_key(key, true) {
                     EventResult::Consumed
                 } else {
@@ -138,6 +154,9 @@ impl Widget for TitleScreen {
                     EventResult::Consumed
                 } else if chrome::hit(&self.sfx_btn, pos.x, pos.y) {
                     self.game.sfx_on = !self.game.sfx_on;
+                    EventResult::Consumed
+                } else if chrome::hit(&self.fullscreen_btn, pos.x, pos.y) {
+                    agg_gui::fullscreen::request_toggle();
                     EventResult::Consumed
                 } else {
                     EventResult::Ignored
