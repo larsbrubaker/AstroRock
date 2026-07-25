@@ -14,9 +14,10 @@ work. If this file ever describes finished work, that's a bug. Use
 
 ## Phase 5 — Playable core (remaining)
 
-- `spawnfx.cpp` — spawn-in effect + the spawn protection it implies
-  (right now a rock over the spawn point kills instantly; tests dodge
-  it, the game shouldn't).
+- `spawnfx.cpp` — the enemy respawn shimmer (fade-in via `FadeBlit[16]`
+  + LocalRand sparkles). Needs the palette fade tables; port together.
+  (Note: player spawns have no protection in the original either — a
+  rock on the spawn point kills you there too.)
 - `players.cpp` remainder: the full `UpdateAll` ordering (speaker
   sprite, hurt/carnage voice timing via LocalRand, untouched/survival
   bonus flags), `PlayersCollidePlayers` (deferred with net), stat bar

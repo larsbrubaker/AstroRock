@@ -14,10 +14,12 @@
 
 pub mod assets;
 pub mod bombs;
+pub mod collide;
 pub mod events;
 pub mod explosion;
 pub mod fixed_trig;
 pub mod frame;
+pub mod gloops;
 pub mod heartbeat;
 pub mod palette;
 pub mod pship;

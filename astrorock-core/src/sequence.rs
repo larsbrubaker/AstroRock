@@ -105,6 +105,7 @@ embedded_sequence!(thrust3, "thrust3");
 embedded_sequence!(thrust4, "thrust4");
 embedded_sequence!(explo, "explo");
 embedded_sequence!(bg_explo, "bgexp");
+embedded_sequence!(gloop, "gloop");
 
 #[cfg(test)]
 mod tests {

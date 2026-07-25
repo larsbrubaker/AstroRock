@@ -21,6 +21,10 @@ pub const TRANSRED_PAL: &[u8] = include_bytes!("../../assets/palettes/transred.p
 /// `rTeaserBmp` — the ASTROROCK title art (310x294 indexed).
 pub const TEASER_PNG: &[u8] = include_bytes!("../../assets/interfac/teaser.png");
 
+/// `rGloop2Pal` / `rGloop3Pal` — gloop tier recolor remap tables.
+pub const GLOOP2_PAL: &[u8] = include_bytes!("../../assets/palettes/gloop2.pal");
+pub const GLOOP3_PAL: &[u8] = include_bytes!("../../assets/palettes/gloop3.pal");
+
 /// Decode an 8-bit indexed PNG (as written by `astrorock-tools`) into a
 /// [`Frame`] of palette indices. Panics on malformed embedded data —
 /// these bytes ship inside the binary, so failure is a build defect.

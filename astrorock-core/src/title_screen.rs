@@ -23,9 +23,11 @@ use agg_gui::widget::Widget;
 use web_time::Instant;
 
 use crate::assets;
+use crate::collide::{self, CollideCtx};
 use crate::events::Events;
 use crate::explosion::Explosions;
 use crate::frame::{BlitMode, Frame};
+use crate::gloops::Gloops;
 use crate::heartbeat::HeartBeat;
 use crate::palette::Palette;
 use crate::pship::{PlayerShip, ShipInputs};
@@ -47,14 +49,6 @@ pub const WORLD_H: i32 = 1024;
 
 /// `#define NUMSTARTSHIPS 3`
 const NUM_START_SHIPS: u32 = 3;
-/// Damage a bare ship deals to what it rams (`SHIPCOLLIDEDAMAGE`).
-const SHIP_COLLIDE_DAMAGE: u32 = 50;
-/// Damage a shielded ship deals (`SHIPSHIELDDAMAGE`).
-const SHIP_SHIELD_DAMAGE: u32 = 1000;
-/// What each rock class does to a player (`BIG/MED/LITCOLLIDEDAMAGE`).
-const BIG_COLLIDE_DAMAGE: u32 = 150;
-const MED_COLLIDE_DAMAGE: u32 = 100;
-const LIT_COLLIDE_DAMAGE: u32 = 50;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Screen {
@@ -82,9 +76,11 @@ pub struct TitleScreen {
     transred: [u8; 256],
     stars: Vec<(i32, i32)>,
     rocks: Rocks,
+    gloops: Gloops,
     explosions: Explosions,
     events: Events,
     net_rand: Rand,
+    local_rand: Rand,
     heartbeat: HeartBeat,
     started: Instant,
     rgba: Vec<u8>,
@@ -129,9 +125,11 @@ impl TitleScreen {
             transred: assets::remap_table(assets::TRANSRED_PAL),
             stars,
             rocks,
+            gloops: Gloops::new(),
             explosions: Explosions::new(),
             events: Events::new(),
             net_rand,
+            local_rand: Rand::new(),
             heartbeat: HeartBeat::new(0),
             started: Instant::now(),
             rgba: Vec::new(),
@@ -155,11 +153,18 @@ impl TitleScreen {
         self.net_rand.seed(0);
         self.level = 0;
         self.explosions.reset();
-        self.rocks.reset(self.level, &mut self.net_rand);
+        self.reset_level();
         self.ship = PlayerShip::new();
         self.ship.reset(NUM_START_SHIPS);
         self.local_player_dead = false;
         self.state = Screen::Playing;
+    }
+
+    /// Per-level resets in the original's `ResetFunc` call order
+    /// (RNG draw order is part of the determinism contract).
+    fn reset_level(&mut self) {
+        self.rocks.reset(self.level, &mut self.net_rand);
+        self.gloops.reset(self.level, &mut self.net_rand);
     }
 
     /// Respawn after death, lives permitting (Enter while dead).
@@ -169,202 +174,6 @@ impl TitleScreen {
         self.ship.sprite.y_pos = self.net_rand.rand(WORLD_H as u32) as f32;
         self.ship.sprite.visible = true;
         self.local_player_dead = false;
-    }
-
-    /// `DamagePlayer` — chip HP; on death, `KillPlayer` (explosion,
-    /// hide, lose a ship).
-    fn damage_player(&mut self, damage: u32) {
-        if damage >= self.ship.sprite.hp {
-            self.ship.sprite.hp = 0;
-            self.explosions
-                .explo_sprite(&mut self.ship.sprite, &self.world, &mut self.events);
-            self.ship.remove_ship();
-            self.local_player_dead = true;
-        } else {
-            self.ship.sprite.hp -= damage;
-        }
-    }
-
-    /// `PlayersCollideObject(&Rocks, 1)` for the single local player.
-    fn collide_player_with_rocks(&mut self) {
-        let clip = Self::clip();
-
-        // Ship hull vs rocks (rock damaged first, then the player —
-        // unless shielded, where the rock takes 1000 and the ship none).
-        if self.ship.sprite.visible {
-            let shield = self.ship.shield_on;
-            let dmg_to_rock = if shield {
-                SHIP_SHIELD_DAMAGE
-            } else {
-                SHIP_COLLIDE_DAMAGE
-            };
-            for class in 0..3usize {
-                let count = match class {
-                    0 => self.rocks.big().len(),
-                    1 => self.rocks.med().len(),
-                    _ => self.rocks.lit().len(),
-                };
-                for i in 0..count {
-                    let hit = {
-                        let rock = match class {
-                            0 => &self.rocks.big()[i],
-                            1 => &self.rocks.med()[i],
-                            _ => &self.rocks.lit()[i],
-                        };
-                        rock.visible && rock.collide_sprite(&self.ship.sprite, &clip)
-                    };
-                    if hit {
-                        let score = match class {
-                            0 => self.rocks.damage_big(
-                                i,
-                                dmg_to_rock,
-                                &mut self.net_rand,
-                                &self.world,
-                                &mut self.explosions,
-                                &mut self.events,
-                            ),
-                            1 => self.rocks.damage_med(
-                                i,
-                                dmg_to_rock,
-                                &mut self.net_rand,
-                                &self.world,
-                                &mut self.explosions,
-                                &mut self.events,
-                            ),
-                            _ => self.rocks.damage_lit(
-                                i,
-                                dmg_to_rock,
-                                &self.world,
-                                &mut self.explosions,
-                                &mut self.events,
-                            ),
-                        };
-                        self.ship.add_score(score);
-                        if !shield {
-                            let player_damage = match class {
-                                0 => BIG_COLLIDE_DAMAGE,
-                                1 => MED_COLLIDE_DAMAGE,
-                                _ => LIT_COLLIDE_DAMAGE,
-                            };
-                            self.damage_player(player_damage);
-                            if !self.ship.sprite.visible {
-                                return; // ship destroyed mid-walk
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // Current shot pool vs rocks: rock takes the shot's damage,
-        // shot disappears (`TallyShotHits`). Rocks outer, shots inner,
-        // matching the list walk.
-        let shot_damage = self.ship.shots[self.ship.cur_shots].damage;
-        for class in 0..3usize {
-            let rock_count = match class {
-                0 => self.rocks.big().len(),
-                1 => self.rocks.med().len(),
-                _ => self.rocks.lit().len(),
-            };
-            for ri in 0..rock_count {
-                let shot_count = 15usize;
-                for si in 0..shot_count {
-                    let hit = {
-                        let rock = match class {
-                            0 => &self.rocks.big()[ri],
-                            1 => &self.rocks.med()[ri],
-                            _ => &self.rocks.lit()[ri],
-                        };
-                        let cur = self.ship.cur_shots;
-                        let shot = self.ship.shots[cur].iter().nth(si).expect("pool size");
-                        rock.visible && shot.visible && rock.collide_sprite(shot, &clip)
-                    };
-                    if hit {
-                        let score = match class {
-                            0 => self.rocks.damage_big(
-                                ri,
-                                shot_damage,
-                                &mut self.net_rand,
-                                &self.world,
-                                &mut self.explosions,
-                                &mut self.events,
-                            ),
-                            1 => self.rocks.damage_med(
-                                ri,
-                                shot_damage,
-                                &mut self.net_rand,
-                                &self.world,
-                                &mut self.explosions,
-                                &mut self.events,
-                            ),
-                            _ => self.rocks.damage_lit(
-                                ri,
-                                shot_damage,
-                                &self.world,
-                                &mut self.explosions,
-                                &mut self.events,
-                            ),
-                        };
-                        self.ship.add_score(score);
-                        let cur = self.ship.cur_shots;
-                        self.ship.shots[cur].hide(si);
-                    }
-                }
-            }
-        }
-
-        // Bombs vs rocks: rock takes 0xFFFF (annihilated), bomb sails on.
-        let bomb_damage = self.ship.bombs.damage;
-        for class in 0..3usize {
-            let rock_count = match class {
-                0 => self.rocks.big().len(),
-                1 => self.rocks.med().len(),
-                _ => self.rocks.lit().len(),
-            };
-            for ri in 0..rock_count {
-                let hit = {
-                    let rock = match class {
-                        0 => &self.rocks.big()[ri],
-                        1 => &self.rocks.med()[ri],
-                        _ => &self.rocks.lit()[ri],
-                    };
-                    rock.visible
-                        && self
-                            .ship
-                            .bombs
-                            .iter()
-                            .any(|b| b.visible && rock.collide_sprite(b, &clip))
-                };
-                if hit {
-                    let score = match class {
-                        0 => self.rocks.damage_big(
-                            ri,
-                            bomb_damage,
-                            &mut self.net_rand,
-                            &self.world,
-                            &mut self.explosions,
-                            &mut self.events,
-                        ),
-                        1 => self.rocks.damage_med(
-                            ri,
-                            bomb_damage,
-                            &mut self.net_rand,
-                            &self.world,
-                            &mut self.explosions,
-                            &mut self.events,
-                        ),
-                        _ => self.rocks.damage_lit(
-                            ri,
-                            bomb_damage,
-                            &self.world,
-                            &mut self.explosions,
-                            &mut self.events,
-                        ),
-                    };
-                    self.ship.add_score(score);
-                }
-            }
-        }
     }
 
     /// Run the 30 Hz simulation up to `now_ms`.
@@ -394,8 +203,26 @@ impl TitleScreen {
 
                     self.rocks.update(&clip, &mut self.net_rand);
                     self.explosions.update(&clip, &mut self.net_rand);
+                    self.gloops
+                        .update(&clip, &mut self.net_rand, &self.world, &self.ship.sprite);
 
-                    self.collide_player_with_rocks();
+                    // PlayersCollideObject order: Rocks first, then
+                    // Gloops (then the rest as they're ported).
+                    {
+                        let mut ctx = CollideCtx {
+                            world: &self.world,
+                            explosions: &mut self.explosions,
+                            events: &mut self.events,
+                            net_rand: &mut self.net_rand,
+                            clip,
+                        };
+                        if collide::player_vs_rocks(&mut self.ship, &mut self.rocks, &mut ctx) {
+                            self.local_player_dead = true;
+                        }
+                        if collide::player_vs_gloops(&mut self.ship, &mut self.gloops, &mut ctx) {
+                            self.local_player_dead = true;
+                        }
+                    }
 
                     self.ship.update(
                         &clip,
@@ -405,10 +232,14 @@ impl TitleScreen {
                         &mut self.events,
                     );
 
-                    // Level cleared — next level's rocks.
-                    if self.rocks.num_big + self.rocks.num_med + self.rocks.num_lit == 0 {
+                    // Level cleared — every rock AND every drawn enemy
+                    // gone (the original ends the level when DrawFrame's
+                    // active counts all hit zero).
+                    if self.rocks.num_big + self.rocks.num_med + self.rocks.num_lit == 0
+                        && self.gloops.num_gloops == 0
+                    {
                         self.level += 1;
-                        self.rocks.reset(self.level, &mut self.net_rand);
+                        self.reset_level();
                     }
 
                     if self.local_player_dead {
@@ -445,6 +276,8 @@ impl TitleScreen {
 
         self.explosions.draw(&self.world, &mut self.screen);
         self.rocks.draw(&self.world, &mut self.screen);
+        self.gloops
+            .draw(&self.world, &mut self.screen, &mut self.local_rand);
 
         match self.state {
             Screen::Attract => {
@@ -472,6 +305,11 @@ impl TitleScreen {
                 }
                 for i in 0..self.rocks.lit().len() {
                     self.radar.plot(&self.rocks.lit()[i], 147, &self.world);
+                }
+                if self.gloops.active() {
+                    for i in 0..self.gloops.pool().len() {
+                        self.radar.plot(&self.gloops.pool()[i], 104, &self.world);
+                    }
                 }
                 self.radar.plot(&self.ship.sprite, 160, &self.world);
                 self.radar
