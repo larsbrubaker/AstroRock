@@ -7,13 +7,6 @@ work. If this file ever describes finished work, that's a bug. Use
 
 ## Phase 1 — Asset pipeline (`astrorock-tools` crate)
 
-- BRGR rez extractor: parse `C:\Development\AstroRock\rezfile` (magic
-  `BRGR`, 210 entries, 12-byte table: offset:3 + flags:1, length:4,
-  reserved:4; IDs = `REZFILE.hpp` order). Recover the tuning configs
-  (`rRocksCfg`, `rGloopCfg`, `rHksCfg`, `rBomberCfg`, `rFastDethCfg`,
-  `rGoodiesCfg`, `rSpikeBallCfg`, …) → commit as text under
-  `assets/config/`. Cross-check extracted art/sounds against the loose
-  `ART/`/`SOUND/` trees.
 - `.spr` (LBBSPR v4, format in `sequence.cpp`/`Sequence.hpp`: magic
   `LBBSPR`, version 4, little-endian longs, optional RLE + alpha block)
   → indexed PNG sheet + JSON sidecar per sprite.
@@ -88,7 +81,9 @@ work. If this file ever describes finished work, that's a bug. Use
 ## Phase 9 — Demo regression suite
 
 - Demo `.dat` reader (`LoadADemo`/`SaveADemo` in `AstroRock.cpp`,
-  30 Hz input stream + periodic checksums).
+  30 Hz input stream + periodic checksums). Use the loose
+  `demo/*.dat` (Apr 1997, matches final code) — the rez's rDemo00..28
+  are older recordings from the Jan 1997 build and differ.
 - Headless replay harness: run the sim, assert every checksum, for all
   27 shipped demos, in `cargo test`.
 - Attract mode (demo playback from the title screen).

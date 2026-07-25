@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["astrorock-core", "astrorock-native", "astrorock-wasm"]
+members = ["astrorock-core", "astrorock-native", "astrorock-wasm", "astrorock-tools"]
 default-members = ["astrorock-core", "astrorock-native"]
 
 [workspace.package]

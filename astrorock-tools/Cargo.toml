@@ -1,0 +1,13 @@
+[package]
+name = "astrorock-tools"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "One-time asset conversion tools for the AstroRock port (rez extraction, sprite/BMP conversion)."
+
+[[bin]]
+name = "astrorock-tools"
+path = "src/main.rs"

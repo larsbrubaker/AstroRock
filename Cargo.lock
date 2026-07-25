@@ -186,6 +186,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "astrorock-tools"
+version = "0.1.0"
+
+[[package]]
 name = "astrorock-wasm"
 version = "0.1.0"
 dependencies = [
