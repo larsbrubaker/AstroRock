@@ -214,7 +214,7 @@ impl Game {
         self.started.elapsed().as_millis() as u64
     }
 
-    fn clip() -> Rect {
+    pub(crate) fn clip() -> Rect {
         Rect::new(0, 0, WORLD_W, WORLD_H)
     }
 
@@ -261,7 +261,7 @@ impl Game {
     /// no one finds them as targets"), then Rocks, Gloops, SpikeBalls,
     /// HKs, Bombers, FastDeaths, Goodies, Explosions, and the
     /// speaker's random position.
-    fn reset_level(&mut self) {
+    pub(crate) fn reset_level(&mut self) {
         // `PlayersResetAll`: every one of the 8 player slots gets
         // `SetVisAndMove` — two NetRand draws each, occupied or not —
         // then its shots/bombs clear and it goes invisible. HP

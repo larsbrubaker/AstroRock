@@ -19,6 +19,7 @@ pub mod bombs;
 pub mod chrome;
 pub mod collide;
 pub mod compose;
+pub mod demo;
 pub mod events;
 pub mod explosion;
 pub mod fastdeaths;

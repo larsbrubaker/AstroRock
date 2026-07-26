@@ -48,6 +48,9 @@ pub struct SpawnFx {
     cur_frame: f32,
     x: f32,
     y: f32,
+    /// `spikedir` — the net-only spikeball dance direction; stays 1
+    /// in single player but feeds the checksum while spawning.
+    spike_dir: f32,
 }
 
 impl SpawnFx {
@@ -58,7 +61,23 @@ impl SpawnFx {
             cur_frame: 0.0,
             x: 0.0,
             y: 0.0,
+            spike_dir: 1.0,
         }
+    }
+
+    /// `SpawnEffectsCheck` — f32 accumulation truncated to a Word
+    /// like the C return cast.
+    pub fn check(&self) -> u32 {
+        let mut sum = 0.0f32;
+        sum += self.duration as f32;
+        if self.duration != 0 {
+            let kind = match self.kind {
+                Some(SpawnKind::FastDeath) => crate::demo::E_FAST_DEATH as f32,
+                None => 0.0,
+            };
+            sum += self.spike_dir + self.cur_frame + self.x + self.y + kind;
+        }
+        sum as u32
     }
 
     /// `SpawnObj` — start a warp-in if none is running and the target

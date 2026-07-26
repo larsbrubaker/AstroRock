@@ -49,20 +49,32 @@ work. If this file ever describes finished work, that's a bug. Use
 - Settings store trait (JSON; file on native, localStorage on wasm)
   replacing binary `Astro.cfg` — key bindings, volumes, high scores.
 
-## Phase 9 — Demo regression suite
+## Phase 9 — Demo regression suite (IN PROGRESS)
 
-- Demo `.dat` reader (`LoadADemo`/`SaveADemo` in `AstroRock.cpp`,
-  30 Hz input stream + periodic checksums). Use the loose
-  `demo/*.dat` (Apr 1997, matches final code) — the rez's rDemo00..28
-  are older recordings from the Jan 1997 build and differ.
-- Headless replay harness: run the sim, assert every checksum, for all
-  27 shipped demos, in `cargo test`.
-- Replay doubles as the difficulty audit: level-1 rocks feel fast to
-  Lars vs memory; the velocity math (`NetRandAbout0(8)+1` px/beat at
-  30 Hz) and cfg counts match the C++ line-for-line, so if demos
-  replay bit-exact the speed IS the 1997 speed — otherwise the
-  divergence they expose is the cause.
-- Attract mode (demo playback from the title screen).
+Landed: parser (`demo.rs` — the files carry NO recorded checksums;
+CHECK_DEMO was compiled out in 1997), `init_demo`/`demo_beat`
+playback, the full `CheckPlayField` port, and the golden-checksum
+harness (`tests/demo_replay.rs`, bless with ASTROROCK_BLESS_DEMOS=1).
+All 31 demos replay panic-free and deterministically; the current
+golden pins OUR determinism only.
+
+- ROOT CAUSE THE 1997 DESYNC: replays diverge from the recordings
+  within ~100 beats (demo00: our pilot dies <100 beats into a
+  1079-beat recording, score 0 — the recorded pilot survived to the
+  end by definition of the stop condition). RNG primitive verified
+  exact (count-then-early-out, warm-up counting). Bisect order:
+  (1) init draw-count audit per reset (players 16, rocks 7*MAXBIG+
+  5*visible, then gloops/spikeballs/hks/bombers/fastdeaths/goodies —
+  each vs its cpp SetVisAndMove/Reset), (2) per-beat update draw
+  audit in the same order, (3) sprite base Update (does CSprite::
+  Update draw? our port takes rand — verify against sprite.cpp),
+  (4) ship physics f32 shapes. A visual side-by-side with the
+  shipped exe (backup runs demos in attract) would bisect init vs
+  update instantly. `examples/demo_probe.rs` prints the timeline
+  and dumps frames.
+- Re-bless the golden once 1997 parity is confirmed; the difficulty
+  audit (rock speed) is settled by the same event.
+- Attract mode (demo playback from the title screen) — after parity.
 
 ## Phase 10 — Polish + ship
 
