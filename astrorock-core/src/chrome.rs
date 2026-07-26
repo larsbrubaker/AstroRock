@@ -29,27 +29,30 @@ const FA_COMPRESS: &str = "\u{f066}";
 const FA_SHIELD: &str = "\u{f132}";
 const FA_CROSSHAIRS: &str = "\u{f05b}";
 const FA_BARS: &str = "\u{f0c9}";
+const FA_ROTATE_LEFT: &str = "\u{f0e2}";
+const FA_ROTATE_RIGHT: &str = "\u{f01e}";
+const FA_ROCKET: &str = "\u{f135}";
 
-/// The mobile virtual-gamepad rects: the tilt joystick pad and
-/// shield under the left thumb, fire under the right, and the menu
-/// (Esc) tap target. There is no thrust button — full stick
-/// deflection IS thrust (the dot merging into the ring shows it).
+/// The mobile virtual-gamepad rects: rotate-left / rotate-right
+/// under the left thumb; fire + thrust (with shield above fire)
+/// under the right; plus the menu (Esc) tap target.
 pub struct TouchLayout {
-    pub stick: GuiRect,
-    pub shield_btn: GuiRect,
+    pub left_btn: GuiRect,
+    pub right_btn: GuiRect,
     pub fire_btn: GuiRect,
+    pub thrust_btn: GuiRect,
+    pub shield_btn: GuiRect,
     pub menu_btn: GuiRect,
 }
 
-/// Per-frame state the touch chrome renders from.
+/// Per-frame hold state the touch chrome lights buttons from.
 #[derive(Clone, Copy, Default)]
 pub struct TouchUi {
-    pub shield: bool,
+    pub left: bool,
+    pub right: bool,
     pub fire: bool,
-    /// Dot position in steering units (length 1 = full deflection).
-    pub stick_pos: (f64, f64),
-    /// Steering engaged (outside the dead zone, or thumb on the pad).
-    pub stick_active: bool,
+    pub thrust: bool,
+    pub shield: bool,
 }
 
 /// Where everything landed this frame, in widget coords (bottom-left
@@ -149,19 +152,20 @@ fn touch_button(ctx: &mut dyn DrawCtx, rect: &GuiRect, glyph: &str, held: bool, 
 }
 
 /// Every rect the touch layout produces — pure geometry, unit-tested
-/// for non-overlap across orientations. Left column: the tilt
-/// joystick alone (release recalibrates the rest plane; deflection
-/// past THRUST_FRAC = thrust). Right column, top to bottom: music +
-/// sfx mutes, fullscreen + Esc, shield, fire.
+/// for non-overlap across orientations. Left column: the rotate
+/// pair `[L][R]` at the thumb. Right column, top to bottom: music +
+/// sfx mutes, fullscreen + Esc, then shield above the `[F][T]` row.
 pub(crate) struct TouchRects {
     pub game: (f64, f64, f64, f64),
     pub landscape: bool,
     pub col_w: f64,
     pub right_x: f64,
     pub zone_h: f64,
-    pub stick: GuiRect,
-    pub shield: GuiRect,
+    pub left: GuiRect,
+    pub right: GuiRect,
     pub fire: GuiRect,
+    pub thrust: GuiRect,
+    pub shield: GuiRect,
     pub fs: GuiRect,
     pub menu: GuiRect,
     pub music: GuiRect,
@@ -202,29 +206,29 @@ pub(crate) fn touch_rects(w: f64, h: f64) -> TouchRects {
         )
     };
 
-    // Button sizing: the right column stacks shield-over-fire plus
-    // two small rows; the left column is ALL joystick — the left
-    // thumb never has to leave it (shield and fire are never held
-    // together, so both live under the right thumb).
+    // Button sizing: both columns hold a side-by-side pair, so the
+    // pair size drives everything — as big as the column allows,
+    // still clearing the small rows above on the right.
     let small = 36.0_f64.min(((col_w - 3.0 * PAD) / 2.0).max(20.0));
-    let big = (col_w - 2.0 * PAD)
+    let pair_gap = 8.0;
+    let pair = ((col_w - 2.0 * PAD - pair_gap) / 2.0)
         .min((zone_h - 2.0 * (small + GAP) - 2.0 * PAD - GAP) / 2.0)
-        .clamp(30.0, 104.0);
-    let stick_size = (col_w - 2.0 * PAD)
-        .min(zone_h - 2.0 * PAD)
-        .clamp(30.0, 200.0);
+        .clamp(30.0, 100.0);
 
-    // Left column: the joystick alone, bottom-anchored at the thumb.
+    // Left column: `[L][R]` rotate pair at the thumb.
     let lcx = left_x + col_w / 2.0;
-    let stick = GuiRect::new(lcx - stick_size / 2.0, PAD, stick_size, stick_size);
+    let lx0 = lcx - pair - pair_gap / 2.0;
+    let left = GuiRect::new(lx0, PAD, pair, pair);
+    let right = GuiRect::new(lx0 + pair + pair_gap, PAD, pair, pair);
 
-    // Right column: fire at the bottom thumb spot, shield right
-    // above it; the small buttons (mutes on top, then fullscreen +
-    // Esc) anchor to the TOP of the zone so a firing thumb can't
-    // graze them.
+    // Right column: `[F][T]` row at the thumb, shield above fire;
+    // the small buttons (mutes on top, then fullscreen + Esc) anchor
+    // to the TOP of the zone so a firing thumb can't graze them.
     let rcx = right_x + col_w / 2.0;
-    let fire = GuiRect::new(rcx - big / 2.0, PAD, big, big);
-    let shield = GuiRect::new(rcx - big / 2.0, PAD + big + GAP, big, big);
+    let rx0 = rcx - pair - pair_gap / 2.0;
+    let fire = GuiRect::new(rx0, PAD, pair, pair);
+    let thrust = GuiRect::new(rx0 + pair + pair_gap, PAD, pair, pair);
+    let shield = GuiRect::new(rx0, PAD + pair + GAP, pair, pair);
     let row_mutes = zone_h - PAD - small;
     let row_fs = row_mutes - GAP - small;
     let music = GuiRect::new(rcx - small - 4.0, row_mutes, small, small);
@@ -238,9 +242,11 @@ pub(crate) fn touch_rects(w: f64, h: f64) -> TouchRects {
         col_w,
         right_x,
         zone_h,
-        stick,
-        shield,
+        left,
+        right,
         fire,
+        thrust,
+        shield,
         fs,
         menu,
         music,
@@ -281,21 +287,11 @@ fn paint_touch(
     }
     ctx.fill();
 
-    // The metaball joystick pad, rasterized at layout size.
-    let stick_px = (r.stick.width.min(r.stick.height) as usize).max(16);
-    let img = crate::joystick::render(stick_px, ui.stick_pos, ui.stick_active);
-    ctx.draw_image_rgba_arc(
-        &Arc::new(img),
-        stick_px as u32,
-        stick_px as u32,
-        r.stick.x,
-        r.stick.y,
-        r.stick.width,
-        r.stick.height,
-    );
-
-    touch_button(ctx, &r.shield, FA_SHIELD, ui.shield, icons);
+    touch_button(ctx, &r.left, FA_ROTATE_LEFT, ui.left, icons);
+    touch_button(ctx, &r.right, FA_ROTATE_RIGHT, ui.right, icons);
     touch_button(ctx, &r.fire, FA_CROSSHAIRS, ui.fire, icons);
+    touch_button(ctx, &r.thrust, FA_ROCKET, ui.thrust, icons);
+    touch_button(ctx, &r.shield, FA_SHIELD, ui.shield, icons);
     icon_button(ctx, &r.music, FA_MUSIC, music_on, icons);
     icon_button(ctx, &r.sfx, FA_VOLUME, sfx_on, icons);
     icon_button(ctx, &r.menu, FA_BARS, true, icons);
@@ -312,9 +308,11 @@ fn paint_touch(
         sfx_btn: r.sfx,
         fullscreen_btn: r.fs,
         touch: Some(TouchLayout {
-            stick: r.stick,
-            shield_btn: r.shield,
+            left_btn: r.left,
+            right_btn: r.right,
             fire_btn: r.fire,
+            thrust_btn: r.thrust,
+            shield_btn: r.shield,
             menu_btn: r.menu,
         }),
     }
@@ -452,9 +450,11 @@ mod tests {
         ] {
             let r = touch_rects(w, h);
             let rects = [
-                ("stick", &r.stick),
-                ("shield", &r.shield),
+                ("left", &r.left),
+                ("right", &r.right),
                 ("fire", &r.fire),
+                ("thrust", &r.thrust),
+                ("shield", &r.shield),
                 ("fs", &r.fs),
                 ("menu", &r.menu),
                 ("music", &r.music),

@@ -434,8 +434,8 @@ impl Game {
             self.touch
         };
         self.ship.set_inputs(ShipInputs {
-            left: self.keys.left,
-            right: self.keys.right,
+            left: self.keys.left || touch.left,
+            right: self.keys.right || touch.right,
             thrust: self.keys.thrust || touch.thrust,
             shield: self.keys.shield || touch.shield,
             fire: self.keys.fire || touch.fire,
