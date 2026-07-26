@@ -49,6 +49,8 @@ pub struct TitleScreen {
     /// Finger ids seen last frame (distinguishes a fresh press on
     /// the pad from a finger sliding in from elsewhere).
     prev_fingers: Vec<u64>,
+    /// Gamepad buttons last frame — Start/Select fire on the edge.
+    prev_pad_buttons: u32,
 }
 
 impl TitleScreen {
@@ -83,6 +85,7 @@ impl TitleScreen {
             stick_baseline: None,
             stick_finger: None,
             prev_fingers: Vec::new(),
+            prev_pad_buttons: 0,
         }
     }
 
@@ -134,6 +137,41 @@ impl Widget for TitleScreen {
     }
 
     fn paint(&mut self, ctx: &mut dyn DrawCtx) {
+        // A real gamepad works everywhere (desktop included): the
+        // left stick steers exactly like the touch pad (snap heading,
+        // deflection past THRUST_FRAC = thrust), South fires,
+        // East/shoulders shield, West bombs, Start = Enter,
+        // Select/Back = Esc.
+        let pad = agg_gui::gamepad::state();
+        {
+            use agg_gui::gamepad::buttons as gb;
+            let now = pad.map(|p| p.buttons).unwrap_or(0);
+            let edge = |bit: u32| now & bit != 0 && self.prev_pad_buttons & bit == 0;
+            if edge(gb::START) {
+                self.game.set_key(&Key::Enter, true);
+                self.game.set_key(&Key::Enter, false);
+            }
+            if edge(gb::SELECT) {
+                self.game.set_key(&Key::Escape, true);
+                self.game.set_key(&Key::Escape, false);
+            }
+            self.prev_pad_buttons = now;
+        }
+        let pad_stick = pad.and_then(|p| {
+            let mag = (p.left_x * p.left_x + p.left_y * p.left_y).sqrt();
+            (mag >= 0.2).then_some((p.left_x, p.left_y))
+        });
+        let (pad_shield, pad_fire, pad_bomb) = pad
+            .map(|p| {
+                use agg_gui::gamepad::buttons as gb;
+                (
+                    p.pressed(gb::EAST) || p.pressed(gb::L1) || p.pressed(gb::R1),
+                    p.pressed(gb::SOUTH),
+                    p.pressed(gb::WEST),
+                )
+            })
+            .unwrap_or((false, false, false));
+
         // Mobile: virtual gamepad + tilt steering, polled per frame.
         let touch_mode = agg_gui::input_profile::is_mobile_touch();
         let touch_ui = if touch_mode {
@@ -202,9 +240,9 @@ impl Widget for TitleScreen {
                 }
             }
 
-            // Steering, in degrees of lean: the thumb overrides tilt
-            // (pad rim = full tilt deflection).
-            let steer = match thumb {
+            // Steering, in degrees of lean: thumb > real gamepad
+            // stick > tilt (rim/full stick = full deflection).
+            let steer = match thumb.or(pad_stick) {
                 Some((vx, vy)) => Some((
                     vx * crate::joystick::MAX_TILT_DEG,
                     vy * crate::joystick::MAX_TILT_DEG,
@@ -233,19 +271,42 @@ impl Widget for TitleScreen {
                 }
                 None => ((0.0, 0.0), false, false),
             };
+            let shield = held.0 || pad_shield;
+            let fire = held.1 || pad_fire;
             self.game.set_touch(crate::touch_input::TouchHeld {
-                shield: held.0,
-                fire: held.1,
+                shield,
+                fire,
                 thrust,
+                bomb: pad_bomb,
             });
             Some(chrome::TouchUi {
-                shield: held.0,
-                fire: held.1,
+                shield,
+                fire,
                 stick_pos: pos,
                 stick_active: active,
             })
         } else {
-            self.game.set_tilt(None);
+            // Desktop: no touch chrome, but a connected pad still
+            // steers and fires through the same lane.
+            let steer = pad_stick.map(|(x, y)| {
+                (
+                    x * crate::joystick::MAX_TILT_DEG,
+                    y * crate::joystick::MAX_TILT_DEG,
+                )
+            });
+            self.game.set_tilt(steer);
+            let thrust = steer
+                .map(|(x, y)| {
+                    (x * x + y * y).sqrt()
+                        >= crate::joystick::MAX_TILT_DEG * crate::joystick::THRUST_FRAC
+                })
+                .unwrap_or(false);
+            self.game.set_touch(crate::touch_input::TouchHeld {
+                shield: pad_shield,
+                fire: pad_fire,
+                thrust,
+                bomb: pad_bomb,
+            });
             None
         };
 

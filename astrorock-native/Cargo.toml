@@ -21,3 +21,6 @@ agg-gui = { workspace = true, features = ["clipboard"] }
 demo-wgpu = { workspace = true }
 # SFX playback — mp3 decode via the default feature set.
 rodio = "0.17"
+# Gamepad polling (XInput/DirectInput/evdev) — feeds agg_gui::gamepad
+# from the shell's per-frame hook.
+gilrs = "0.11"

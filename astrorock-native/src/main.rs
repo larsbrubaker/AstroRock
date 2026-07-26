@@ -6,6 +6,7 @@
 //! and hands over the shared app built by `astrorock-core`.
 
 mod audio;
+mod gamepad;
 mod settings;
 
 use astrorock_core::{build_astrorock_app_with_platform, load_default_font};
@@ -20,6 +21,8 @@ fn main() {
         Box::new(settings::FileSettings::new()) as Box<dyn astrorock_core::settings::SettingsStore>;
     let app = build_astrorock_app_with_platform(load_default_font(), sink, Some(store));
 
+    // Gamepad polling rides the shell's per-frame hook.
+    let mut pads = gamepad::GamepadPoller::new();
     demo_wgpu::native_shell::run(
         demo_wgpu::NativeShellConfig {
             title: "AstroRock",
@@ -28,6 +31,6 @@ fn main() {
             logical_size: (960.0, 720.0),
         },
         app,
-        || {},
+        move || pads.poll(),
     );
 }

@@ -10,12 +10,15 @@
 
 use crate::game::{Game, Screen};
 
-/// Held state of the on-screen touch buttons.
+/// Held state of the on-screen touch buttons (and gamepad buttons —
+/// both merge into the same lane).
 #[derive(Default, Clone, Copy, PartialEq, Eq)]
 pub struct TouchHeld {
     pub shield: bool,
     pub fire: bool,
     pub thrust: bool,
+    /// No on-screen button — gamepad West only.
+    pub bomb: bool,
 }
 
 impl Game {
