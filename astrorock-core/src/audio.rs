@@ -66,6 +66,8 @@ pub enum SfxId {
     Shimmer,
     /// Menu button click (`rClickedSnd`).
     Clicked,
+    /// The showcase monitor's TV static (`rStaticSnd`).
+    Static,
 }
 
 /// `pNewPlayerSounds` / `pDeadPlayerSounds` / `pCarnagePlayerSounds` /
@@ -132,6 +134,7 @@ impl SfxId {
             SfxId::VoicePayback => "payback",
             SfxId::Shimmer => "shimmer",
             SfxId::Clicked => "clicked",
+            SfxId::Static => "static",
         }
     }
 
@@ -183,6 +186,7 @@ impl SfxId {
             VoicePayback => "payback",
             Shimmer => "shimmer",
             Clicked => "clicked",
+            Static => "static",
         }
     }
 
@@ -224,6 +228,7 @@ impl SfxId {
             SfxId::VoicePayback,
             SfxId::Shimmer,
             SfxId::Clicked,
+            SfxId::Static,
         ]
     }
 }
@@ -366,6 +371,7 @@ pub fn dispatch(
             GameEvent::SfxBonus => sink.play(SfxId::Bonus, 0),
             GameEvent::SfxShimmer => sink.play(SfxId::Shimmer, 0),
             GameEvent::SfxClicked => sink.play(SfxId::Clicked, 0),
+            GameEvent::SfxStatic => sink.play(SfxId::Static, 0),
             GameEvent::GoodyCollected { kind } => {
                 if local_rand.rand(4) != 0 {
                     sink.play(SfxId::Goody, 0);

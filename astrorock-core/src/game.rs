@@ -33,7 +33,7 @@ use crate::heartbeat::HeartBeat;
 use crate::hks::Hks;
 use crate::input::{self, Binding, KeysHeld};
 use crate::intermission::{Intermission, LevelStats};
-use crate::menu::{Menu, MenuAction};
+use crate::menu::Menu;
 use crate::palette::{FadeBlits, Palette};
 use crate::pship::{PlayerShip, ShipInputs};
 use crate::radar::Radar;
@@ -133,10 +133,10 @@ pub struct Game {
     /// Active demo playback: (embedded index, next beat).
     pub(crate) demo_run: Option<(usize, usize)>,
     /// `LastDemo` — don't repeat the same recording back to back.
-    last_demo: usize,
+    pub(crate) last_demo: usize,
     /// MSVC `rand()` (never srand'd — seed 1): burns the randomized
     /// LocalRand/NetRand draw counts at `START_ONEPLAYER`.
-    crt_seed: u32,
+    pub(crate) crt_seed: u32,
 }
 
 impl Game {
@@ -226,14 +226,6 @@ impl Game {
         }
     }
 
-    /// MSVC CRT `rand()` — `seed*214013+2531011`, top 15 bits. The
-    /// original never called `srand`, so the sequence from seed 1 is
-    /// part of the behavior.
-    fn crt_rand(&mut self) -> u32 {
-        self.crt_seed = self.crt_seed.wrapping_mul(214013).wrapping_add(2531011);
-        (self.crt_seed >> 16) & 0x7FFF
-    }
-
     /// Milliseconds since construction — the widget's paint clock.
     pub fn now_ms(&self) -> u64 {
         self.started.elapsed().as_millis() as u64
@@ -256,91 +248,6 @@ impl Game {
             + self.bombers.num_bombers
             + self.spikeballs.num_spikeballs
             + self.fastdeaths.num_fast_deaths
-    }
-
-    /// `START_ONEPLAYER` + `NewGame`: burn a CRT-randomized count of
-    /// LocalRand and NetRand draws (the original's game-to-game
-    /// variety), then start at `level` (`GlobalStartLevel`).
-    fn start_game(&mut self, level: u32) {
-        let n = self.crt_rand() % 256;
-        for _ in 0..n {
-            self.local_rand.rand(256);
-        }
-        let n = self.crt_rand() % 256;
-        for _ in 0..n {
-            self.net_rand.rand(256);
-        }
-        self.level = level as usize;
-        self.ship = PlayerShip::new();
-        self.ship.reset(NUM_START_SHIPS);
-        self.stats.reset(level);
-        self.new_level();
-        self.local_player_dead = false;
-        self.game_over_pause = 0;
-        self.state = Screen::Playing;
-    }
-
-    /// `StartDemoButton` + `LoadADemo`: a LocalRand pick that never
-    /// repeats the previous recording.
-    fn play_demo(&mut self) {
-        let demos = crate::demo::embedded_demos();
-        let mut pick = self.local_rand.rand(demos.len() as u32) as usize;
-        while pick == self.last_demo {
-            pick = self.local_rand.rand(demos.len() as u32) as usize;
-        }
-        self.last_demo = pick;
-        let demo = crate::demo::Demo::parse(demos[pick]).expect("embedded demo parses");
-        self.init_demo(demo.start_level);
-        self.demo_run = Some((pick, 0));
-        self.state = Screen::Demo;
-    }
-
-    /// Demo over or interrupted: back to the start screen
-    /// (`CurLevel = 0; ResetAll(); StartScreenShow`).
-    fn end_demo(&mut self) {
-        self.demo_run = None;
-        self.level = 0;
-        self.reset_level();
-        self.menu.show_main();
-        self.state = Screen::Menu;
-    }
-
-    fn handle_menu_action(&mut self, action: MenuAction) {
-        match action {
-            MenuAction::StartGame { level } => self.start_game(level),
-            MenuAction::PlayDemo => self.play_demo(),
-            MenuAction::ResumeGame => self.state = Screen::Playing,
-            MenuAction::Quit => {
-                #[cfg(not(target_arch = "wasm32"))]
-                std::process::exit(0);
-                #[cfg(target_arch = "wasm32")]
-                self.menu.show_main();
-            }
-        }
-    }
-
-    /// Mouse input in 640x480 game-surface coordinates.
-    pub fn on_mouse_move(&mut self, x: i32, y: i32) {
-        if self.state == Screen::Menu {
-            self.menu.on_mouse_move(x, y);
-        }
-    }
-
-    pub fn on_mouse_down(&mut self, x: i32, y: i32) {
-        match self.state {
-            Screen::Menu => self.menu.on_mouse_down(x, y),
-            // `MouseHasChanged()` interrupts a demo.
-            Screen::Demo => self.end_demo(),
-            _ => {}
-        }
-    }
-
-    pub fn on_mouse_up(&mut self, x: i32, y: i32) {
-        if self.state == Screen::Menu {
-            if let Some(action) = self.menu.on_mouse_up(x, y, &mut self.events) {
-                self.handle_menu_action(action);
-            }
-        }
     }
 
     /// `NewLevel` — reset the world, then wait for Enter to spawn
@@ -434,6 +341,9 @@ impl Game {
 
             match self.state {
                 Screen::Menu => {
+                    // `StartScreenUpdate(1)`: the showcase monitor
+                    // animates per beat (LocalRand only — visual).
+                    self.menu.beat(&mut self.local_rand, &mut self.events);
                     // `STATE_MAIN`: Enter starts a game (line 758ff);
                     // clicks arrive through on_mouse_up.
                     if self.enter_pressed && self.menu.enter_starts() {

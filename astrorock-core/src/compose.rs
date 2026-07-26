@@ -45,7 +45,7 @@ impl Game {
     pub fn compose(&mut self) {
         // The start screen replaces the whole 640x480 (own palette).
         if self.state == Screen::Menu {
-            self.menu.draw(&mut self.screen);
+            self.menu.draw(&mut self.screen, &self.fades);
             return;
         }
 

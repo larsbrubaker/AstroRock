@@ -59,6 +59,10 @@ pub const ENDGAME_PNG: &[u8] = include_bytes!("../../assets/interfac/endgame.png
 pub const START_PNG: &[u8] = include_bytes!("../../assets/interfac/start.png");
 /// `rReallyqBmp` — "Are you sure you want to quit?".
 pub const REALLYQ_PNG: &[u8] = include_bytes!("../../assets/interfac/reallyq.png");
+/// The showcase monitor's TV-static frames (`rStatic1Bmp`..3).
+pub const STATIC1_PNG: &[u8] = include_bytes!("../../assets/interfac/static1.png");
+pub const STATIC2_PNG: &[u8] = include_bytes!("../../assets/interfac/static2.png");
+pub const STATIC3_PNG: &[u8] = include_bytes!("../../assets/interfac/static3.png");
 
 /// Start-screen button art (up/down pairs).
 pub const STRGM_PNG: [&[u8]; 2] = [

@@ -16,11 +16,15 @@
 //! config screen with the game frozen behind it (the original's Esc
 //! went to a quit-confirm; options only lived on the start screen).
 
+use std::rc::Rc;
+
 use crate::assets;
 use crate::events::{Events, GameEvent};
 use crate::font::{Font, Justify};
 use crate::frame::{BlitMode, Frame};
-use crate::palette::Palette;
+use crate::palette::{FadeBlits, Palette};
+use crate::rand::Rand;
+use crate::sequence::{self, FrameSequence};
 
 /// `#define VERSION_NUMBER "V:1.0.2"` (+ the port's tag).
 const VERSION: &str = "V:1.0.2 RUST";
@@ -48,6 +52,148 @@ pub enum MenuAction {
     Quit,
     /// Close the menu and unfreeze the game (Esc-from-game flow).
     ResumeGame,
+    /// Abandon the running game (`STATE_REALLYENDGAME` Yes): the
+    /// GAME OVER overlay plays out, then back to the menu.
+    EndGame,
+}
+
+/// The bad-guy showcase monitor (`SwitchBadGuy`/`UpdateBadGuyScreen`/
+/// `DrawBadGuyScreen`): a random subject from 15 — the ship, five
+/// enemies, a rock, and the eight goodies — switches every
+/// `SWITCHBADGUYPAUSE` beats behind nine frames of TV static and
+/// fades in through the `FadeBlit` tables.
+struct Showcase {
+    seqs: Vec<Rc<FrameSequence>>,
+    statics: [Frame; 3],
+    cur: usize,
+    pause: i32,
+    cur_frame: f32,
+    spike_dir: f32,
+    cur_fade: usize,
+}
+
+/// `#define SWITCHBADGUYPAUSE 150`
+const SWITCH_PAUSE: i32 = 150;
+/// `#define NUMSTATICUPDATES 9`
+const NUM_STATIC_UPDATES: i32 = 9;
+/// `BADGUYX/Y` — direct screen coordinates.
+const BADGUY_X: i32 = 320;
+const BADGUY_Y: i32 = 150;
+/// Spikeballs are showcase type 2 (they get the roll-walk dance).
+const TYPE_SPIKEBALL: usize = 2;
+
+impl Showcase {
+    fn new() -> Self {
+        // `SwitchBadGuy` type order, goodies in `GetType` order.
+        let seqs: Vec<Rc<FrameSequence>> = vec![
+            sequence::ship(),
+            sequence::gloop(),
+            sequence::spkball(),
+            sequence::bomber(),
+            sequence::hk(),
+            sequence::fastdeth(),
+            sequence::ast_big(),
+            sequence::health(),
+            sequence::pows(),
+            sequence::rapid(),
+            sequence::spred(),
+            sequence::bombg(),
+            sequence::gun01(),
+            sequence::gun02(),
+            sequence::one_up(),
+        ];
+        Self {
+            seqs,
+            statics: [
+                assets::frame_from_indexed_png(assets::STATIC1_PNG),
+                assets::frame_from_indexed_png(assets::STATIC2_PNG),
+                assets::frame_from_indexed_png(assets::STATIC3_PNG),
+            ],
+            cur: 0,
+            // Starts at the threshold: the first beat switches.
+            pause: SWITCH_PAUSE,
+            cur_frame: 0.0,
+            spike_dir: 1.0,
+            cur_fade: 0,
+        }
+    }
+
+    /// One menu beat (`UpdateBadGuyScreen` + the switch check).
+    fn update(&mut self, local_rand: &mut Rand, events: &mut Events) {
+        if self.pause >= SWITCH_PAUSE {
+            let n = self.seqs.len() as u32;
+            let mut next = local_rand.rand(n) as usize;
+            while next == self.cur {
+                next = local_rand.rand(n) as usize;
+            }
+            self.cur = next;
+            self.pause = 0;
+            // `curframe` is a persistent static — it keeps counting
+            // across switches (no reset in SwitchBadGuy).
+        }
+
+        if self.cur == TYPE_SPIKEBALL {
+            // The roll-walk dance (LocalRand — visual only).
+            self.cur_frame += self.spike_dir;
+            if self.cur_frame > 60.0 {
+                self.cur_frame = 0.0;
+            }
+            if self.cur_frame < 0.0 {
+                self.cur_frame = 60.0;
+            }
+            if (self.cur_frame as i32) % 20 == 0 {
+                self.cur_frame = (local_rand.rand(4) * 20) as f32;
+                if local_rand.rand(2) != 0 {
+                    self.spike_dir = -1.0;
+                    if self.cur_frame == 0.0 {
+                        self.cur_frame = 60.0;
+                    }
+                } else {
+                    self.spike_dir = 1.0;
+                    if self.cur_frame == 60.0 {
+                        self.cur_frame = 0.0;
+                    }
+                }
+            }
+        } else {
+            self.cur_frame += 1.0;
+        }
+
+        if self.pause == 0 {
+            events.push(GameEvent::SfxStatic);
+        }
+
+        // Fade the fresh subject in from black behind the static.
+        if self.pause >= NUM_STATIC_UPDATES - 1
+            && self.pause < crate::palette::NUM_FADES as i32 + NUM_STATIC_UPDATES
+        {
+            let fade = crate::palette::NUM_FADES as i32 + NUM_STATIC_UPDATES - self.pause;
+            self.cur_fade = (fade.min(crate::palette::NUM_FADES as i32 - 1)) as usize;
+        } else {
+            self.cur_fade = 0;
+        }
+        self.pause += 1;
+    }
+
+    /// `DrawBadGuyScreen`.
+    fn draw(&self, screen: &mut Frame, fades: &FadeBlits) {
+        let seq = &self.seqs[self.cur];
+        let index = (self.cur_frame as u32 % seq.num_frames) as usize;
+        let art = &seq.frames[index];
+        let blit = fades.blit(self.cur_fade);
+        screen.blit(
+            art,
+            &art.bounds(),
+            BADGUY_X - art.hot_x,
+            BADGUY_Y - art.hot_y,
+            blit.to_mode(),
+        );
+
+        if self.pause < NUM_STATIC_UPDATES {
+            let st = &self.statics[(self.pause % 3) as usize];
+            screen.blit(st, &st.bounds(), 225, 118, BlitMode::Transparent0);
+        }
+    }
 }
 
 struct Button {
@@ -112,6 +258,8 @@ pub struct Menu {
     pub start_level: u32,
     /// Set when Esc opened the menu mid-game: Done/Esc resumes.
     pub from_game: bool,
+    /// The bad-guy showcase monitor in the backdrop's top screen.
+    showcase: Showcase,
 }
 
 impl Menu {
@@ -145,7 +293,17 @@ impl Menu {
             cursor: (-1, -1),
             start_level: 0,
             from_game: false,
+            showcase: Showcase::new(),
         }
+    }
+
+    /// One 30 Hz menu beat (`StartScreenUpdate(isgameupdate=1)`): the
+    /// showcase monitor animates on every page. (The original skips
+    /// the SUBJECT SWITCH during `STATE_HELP` because help pages pick
+    /// their subject manually — that gate arrives with the help
+    /// pages.)
+    pub fn beat(&mut self, local_rand: &mut Rand, events: &mut Events) {
+        self.showcase.update(local_rand, events);
     }
 
     /// Which buttons live on the current page.
@@ -160,6 +318,17 @@ impl Menu {
                 ButtonId::Help,
                 ButtonId::Quit,
                 ButtonId::Demo,
+            ],
+            // Opened mid-game, the config page grows a Quit button —
+            // the way back to the original's `STATE_REALLYENDGAME`
+            // "end this game?" confirm.
+            Page::Config if self.from_game => &[
+                ButtonId::LevelDown,
+                ButtonId::LevelUp,
+                ButtonId::CfgKeys,
+                ButtonId::CfgSound,
+                ButtonId::Done,
+                ButtonId::Quit,
             ],
             Page::Config => &[
                 ButtonId::LevelDown,
@@ -255,7 +424,11 @@ impl Menu {
                 self.page = Page::ReallyQuit;
                 None
             }
+            // From a running game the confirm ends THE GAME, not the
+            // app (`STATE_REALLYENDGAME`: Y -> GAME OVER, N -> play).
+            ButtonId::QuitYes if self.from_game => Some(MenuAction::EndGame),
             ButtonId::QuitYes => Some(MenuAction::Quit),
+            ButtonId::QuitNo if self.from_game => Some(MenuAction::ResumeGame),
             ButtonId::QuitNo => {
                 self.page = Page::Main;
                 None
@@ -290,8 +463,10 @@ impl Menu {
         self.buttons.iter().find(|b| b.id == id).expect("button")
     }
 
-    /// Draw the whole page into the 640x480 screen.
-    pub fn draw(&self, screen: &mut Frame) {
+    /// Draw the whole page into the 640x480 screen. `fades` is the
+    /// game-palette `FadeBlit` table — the original built it once at
+    /// init and the start screen used it as-is.
+    pub fn draw(&self, screen: &mut Frame, fades: &FadeBlits) {
         screen.blit(
             &self.backdrop,
             &self.backdrop.bounds(),
@@ -299,6 +474,9 @@ impl Menu {
             0,
             BlitMode::Normal,
         );
+
+        // `DrawBadGuyScreen` — right after the backdrop, every page.
+        self.showcase.draw(screen, fades);
 
         match self.page {
             Page::Main => {}
@@ -419,6 +597,66 @@ mod tests {
 
         menu.show_options_from_game();
         assert_eq!(menu.on_escape(), Some(MenuAction::ResumeGame));
+    }
+
+    #[test]
+    fn showcase_switches_subjects_behind_static() {
+        let mut menu = Menu::new();
+        let mut rand = Rand::new();
+        let mut ev = Events::new();
+
+        // First beat: the pause starts at the threshold, so a subject
+        // is picked (never the current one) and the static burst
+        // begins with its sound.
+        menu.beat(&mut rand, &mut ev);
+        let first = menu.showcase.cur;
+        assert_ne!(first, 0, "first pick must differ from the initial 0");
+        assert!(ev.drain().any(|e| e == GameEvent::SfxStatic));
+        assert_eq!(menu.showcase.pause, 1);
+
+        // Static frames cover updates 0..NUMSTATICUPDATES; the fade
+        // ramp runs while they clear, then settles at full (0).
+        for _ in 0..NUM_STATIC_UPDATES + 3 {
+            menu.beat(&mut rand, &mut ev);
+        }
+        assert!(menu.showcase.cur_fade > 0, "fade-in should be running");
+        for _ in 0..crate::palette::NUM_FADES as i32 {
+            menu.beat(&mut rand, &mut ev);
+        }
+        assert_eq!(menu.showcase.cur_fade, 0, "fade completes");
+
+        // At SWITCHBADGUYPAUSE the subject changes again.
+        while menu.showcase.pause < SWITCH_PAUSE {
+            menu.beat(&mut rand, &mut ev);
+        }
+        menu.beat(&mut rand, &mut ev);
+        assert_ne!(menu.showcase.cur, first, "subject never repeats");
+    }
+
+    #[test]
+    fn from_game_quit_confirm_ends_the_game() {
+        let mut menu = Menu::new();
+        let mut ev = Events::new();
+        menu.show_options_from_game();
+        // The from-game config page grows the Quit button (344, 352).
+        assert!(menu.page_buttons().contains(&ButtonId::Quit));
+
+        menu.on_mouse_down(350, 358);
+        assert_eq!(menu.on_mouse_up(350, 358, &mut ev), None);
+        assert_eq!(menu.page, Page::ReallyQuit);
+
+        // No resumes play; Yes abandons the game to GAME OVER.
+        menu.on_mouse_down(350, 315); // QuitNo at (344, 310)
+        assert_eq!(
+            menu.on_mouse_up(350, 315, &mut ev),
+            Some(MenuAction::ResumeGame)
+        );
+        menu.page = Page::ReallyQuit;
+        menu.on_mouse_down(140, 315); // QuitYes at (136, 310)
+        assert_eq!(
+            menu.on_mouse_up(140, 315, &mut ev),
+            Some(MenuAction::EndGame)
+        );
     }
 
     #[test]

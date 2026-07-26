@@ -17,10 +17,8 @@ work. If this file ever describes finished work, that's a bug. Use
 - `players.cpp` remainder: `PlayersCollidePlayers` (deferred with
   net).
 - Pause (`STATE_PAUSE`, Pause key + pause.png overlay, FastDeaths
-  freeze while paused) and the Esc quit-confirm
-  (`STATE_REALLYENDGAME`, reallyq.png, Y/N) — small states around
-  the ported machine; land with Phase 8 menus. Ctrl+S/Ctrl+M mute
-  keys covered by the chrome toggles until then.
+  freeze while paused) — lands with the Phase 8 pause overlay.
+  Ctrl+S/Ctrl+M mute keys covered by the chrome toggles until then.
 - Known replay nuance for Phase 9: the original's level-end check
   reads `NumBadGuys` from the previous DRAW (render-paced); our
   live per-beat count is equivalent whenever rendering kept up with
@@ -43,13 +41,15 @@ Landed (menu.rs): boot into the shipped start screen (start.png with
 its own palette), 2-state bitmap buttons at the 1997 coordinates
 firing on release with the click sound, Enter-starts, the config
 page's start-level picker, credits, really-quit confirm, the Demo
-button playing an embedded recording, and (modern, by request) Esc
-in-game pausing into the config page.
+button playing an embedded recording, the bad-guy showcase monitor
+(subjects cycling behind TV static with the FadeBlit fade-in and
+static sound), and (modern, by request) Esc in-game pausing into the
+config page — which grows a Quit button routing through the
+`STATE_REALLYENDGAME` confirm to GAME OVER and back to the menu.
 
-- The bad-guy showcase monitor on the main screen (enemy previews
-  cycling behind static transitions, `pStatic`/`SwitchBadGuyPause`
-  with the FadeBlit fade-in).
-- Help pages (`ppHelpText` from text.hpp) behind the Help button.
+- Help pages (`ppHelpText` from text.hpp) behind the Help button —
+  including the showcase's manual subject picker (`SwitchBadGuy` gate
+  during `STATE_HELP`, HelpLeft/HelpRight buttons).
 - High scores: `HighScore.cpp` list + entry + View High button.
 - Key remapping (`STATE_CONFIG_KEYS`, cfgkeys art, key capture) —
   input.rs bindings become data; joystick/gamepad config with it.

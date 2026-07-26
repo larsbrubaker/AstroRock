@@ -2,8 +2,12 @@
 //! an RGBA PNG for visual inspection.
 //!
 //! ```text
-//! cargo run -p astrorock-core --example dump_frame -- out.png
+//! cargo run -p astrorock-core --example dump_frame -- out.png [beats]
 //! ```
+//!
+//! The optional second argument advances the simulation that many
+//! 30 Hz beats first (e.g. to catch the menu's showcase monitor
+//! mid-animation).
 
 use astrorock_core::game::Game;
 
@@ -11,8 +15,15 @@ fn main() {
     let path = std::env::args()
         .nth(1)
         .unwrap_or_else(|| "title_frame.png".to_string());
+    let beats: u64 = std::env::args()
+        .nth(2)
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0);
 
     let mut game = Game::new(None);
+    for beat in 0..beats {
+        game.advance(beat * 1000 / 30 + 34);
+    }
     game.compose();
     let mut rgba = Vec::new();
     game.current_palette()

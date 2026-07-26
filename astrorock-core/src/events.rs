@@ -38,6 +38,9 @@ pub enum GameEvent {
     VoiceNewShip,
     /// A menu button fired (`pClickedSound`, rClickedSnd).
     SfxClicked,
+    /// The showcase monitor changed subjects (`pStaticSound`,
+    /// rStaticSnd).
+    SfxStatic,
     /// `GetGoody` picked up (the pickup jingle / voice line).
     GoodyCollected { kind: GoodyKind },
 }

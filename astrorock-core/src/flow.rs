@@ -6,7 +6,9 @@
 //! `switch (GameState)`.
 
 use crate::events::GameEvent;
-use crate::game::{Game, Screen};
+use crate::game::{Game, Screen, NUM_START_SHIPS};
+use crate::menu::MenuAction;
+use crate::pship::PlayerShip;
 use crate::rect::Rect;
 
 impl Game {
@@ -16,6 +18,106 @@ impl Game {
         self.reset_level();
         self.menu.show_main();
         self.state = Screen::Menu;
+    }
+
+    /// MSVC CRT `rand()` — `seed*214013+2531011`, top 15 bits. The
+    /// original never called `srand`, so the sequence from seed 1 is
+    /// part of the behavior.
+    fn crt_rand(&mut self) -> u32 {
+        self.crt_seed = self.crt_seed.wrapping_mul(214013).wrapping_add(2531011);
+        (self.crt_seed >> 16) & 0x7FFF
+    }
+
+    /// `START_ONEPLAYER` + `NewGame`: burn a CRT-randomized count of
+    /// LocalRand and NetRand draws (the original's game-to-game
+    /// variety), then start at `level` (`GlobalStartLevel`).
+    pub(crate) fn start_game(&mut self, level: u32) {
+        let n = self.crt_rand() % 256;
+        for _ in 0..n {
+            self.local_rand.rand(256);
+        }
+        let n = self.crt_rand() % 256;
+        for _ in 0..n {
+            self.net_rand.rand(256);
+        }
+        self.level = level as usize;
+        self.ship = PlayerShip::new();
+        self.ship.reset(NUM_START_SHIPS);
+        self.stats.reset(level);
+        self.new_level();
+        self.local_player_dead = false;
+        self.game_over_pause = 0;
+        self.state = Screen::Playing;
+    }
+
+    /// `StartDemoButton` + `LoadADemo`: a LocalRand pick that never
+    /// repeats the previous recording.
+    fn play_demo(&mut self) {
+        let demos = crate::demo::embedded_demos();
+        let mut pick = self.local_rand.rand(demos.len() as u32) as usize;
+        while pick == self.last_demo {
+            pick = self.local_rand.rand(demos.len() as u32) as usize;
+        }
+        self.last_demo = pick;
+        let demo = crate::demo::Demo::parse(demos[pick]).expect("embedded demo parses");
+        self.init_demo(demo.start_level);
+        self.demo_run = Some((pick, 0));
+        self.state = Screen::Demo;
+    }
+
+    /// Demo over or interrupted: back to the start screen
+    /// (`CurLevel = 0; ResetAll(); StartScreenShow`).
+    pub(crate) fn end_demo(&mut self) {
+        self.demo_run = None;
+        self.level = 0;
+        self.reset_level();
+        self.menu.show_main();
+        self.state = Screen::Menu;
+    }
+
+    pub(crate) fn handle_menu_action(&mut self, action: MenuAction) {
+        match action {
+            MenuAction::StartGame { level } => self.start_game(level),
+            MenuAction::PlayDemo => self.play_demo(),
+            MenuAction::ResumeGame => self.state = Screen::Playing,
+            // `STATE_REALLYENDGAME` Yes: the GAME OVER overlay plays
+            // over the abandoned world, then back to the menu.
+            MenuAction::EndGame => {
+                self.world.set_on_screen_rect(self.on_screen());
+                self.game_over_pause = 0;
+                self.state = Screen::GameOver;
+            }
+            MenuAction::Quit => {
+                #[cfg(not(target_arch = "wasm32"))]
+                std::process::exit(0);
+                #[cfg(target_arch = "wasm32")]
+                self.menu.show_main();
+            }
+        }
+    }
+
+    /// Mouse input in 640x480 game-surface coordinates.
+    pub fn on_mouse_move(&mut self, x: i32, y: i32) {
+        if self.state == Screen::Menu {
+            self.menu.on_mouse_move(x, y);
+        }
+    }
+
+    pub fn on_mouse_down(&mut self, x: i32, y: i32) {
+        match self.state {
+            Screen::Menu => self.menu.on_mouse_down(x, y),
+            // `MouseHasChanged()` interrupts a demo.
+            Screen::Demo => self.end_demo(),
+            _ => {}
+        }
+    }
+
+    pub fn on_mouse_up(&mut self, x: i32, y: i32) {
+        if self.state == Screen::Menu {
+            if let Some(action) = self.menu.on_mouse_up(x, y, &mut self.events) {
+                self.handle_menu_action(action);
+            }
+        }
     }
 }
 
@@ -225,6 +327,28 @@ mod tests {
         assert_eq!(g.ship.sprite.hp, 100);
         // And it spawned exactly where it was left.
         assert!(g.ship.sprite.x_pos < 30.0 && g.ship.sprite.y_pos < 30.0);
+    }
+
+    #[test]
+    fn esc_quit_confirm_abandons_the_game_through_game_over() {
+        let mut g = Game::new(None);
+        let now = start_and_spawn(&mut g);
+
+        // Esc mid-game: frozen into the options page.
+        g.set_key(&Key::Escape, true);
+        assert!(g.state == Screen::Menu && g.menu.from_game);
+        g.set_key(&Key::Escape, false);
+
+        // Quit -> confirm -> Yes: the GAME OVER overlay plays out.
+        g.handle_menu_action(crate::menu::MenuAction::EndGame);
+        assert!(g.state == Screen::GameOver);
+
+        // Enter leaves GAME OVER for the start screen, reset clean.
+        g.set_key(&Key::Enter, true);
+        step(&mut g, now, 1);
+        assert!(g.state == Screen::Menu);
+        assert!(!g.menu.from_game, "back on the main page");
+        assert!(g.menu.enter_starts(), "Enter can start a fresh game");
     }
 
     #[test]
