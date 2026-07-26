@@ -42,9 +42,13 @@ pub struct TitleScreen {
     /// The calibrated rest plane: raw tilt at the last stick release
     /// (or the first reading). Steering is measured from here.
     stick_baseline: Option<(f64, f64)>,
-    /// A thumb was on the joystick pad last frame — its release
-    /// recalibrates the rest plane.
-    stick_touched: bool,
+    /// The finger driving the joystick: captured when a NEW press
+    /// lands on the pad, and kept — wherever it drags — until that
+    /// same press lifts (its release recalibrates the rest plane).
+    stick_finger: Option<u64>,
+    /// Finger ids seen last frame (distinguishes a fresh press on
+    /// the pad from a finger sliding in from elsewhere).
+    prev_fingers: Vec<u64>,
 }
 
 impl TitleScreen {
@@ -77,7 +81,8 @@ impl TitleScreen {
             touch_layout: None,
             tilt_requested: false,
             stick_baseline: None,
-            stick_touched: false,
+            stick_finger: None,
+            prev_fingers: Vec::new(),
         }
     }
 
@@ -137,45 +142,68 @@ impl Widget for TitleScreen {
                 self.tilt_requested = true;
             }
             let fingers = agg_gui::touch_points::active();
-            let over = |r: &GuiRect| fingers.iter().any(|p| chrome::hit(r, p.pos.x, p.pos.y));
-            // Buttons hold while any finger covers them; a thumb on
-            // the joystick pad steers directly (widget Y-up flips to
-            // the game's screen-down steering axis).
-            let (held, thumb) = match &self.touch_layout {
-                Some(t) => (
-                    (over(&t.shield_btn), over(&t.fire_btn), over(&t.thrust_btn)),
-                    fingers
+
+            // The joystick captures its finger: a NEW press landing
+            // on the pad steers — wherever it drags — until that
+            // press lifts. Fingers sliding in from elsewhere are
+            // ignored.
+            let was_captured = self.stick_finger.is_some();
+            if let Some(id) = self.stick_finger {
+                if !fingers.iter().any(|p| p.id == id) {
+                    self.stick_finger = None;
+                }
+            }
+            if self.stick_finger.is_none() {
+                if let Some(t) = &self.touch_layout {
+                    self.stick_finger = fingers
                         .iter()
-                        .find(|p| chrome::hit(&t.stick, p.pos.x, p.pos.y))
-                        .map(|p| {
-                            let r = (t.stick.width / 2.0).max(1.0);
-                            (
-                                (p.pos.x - (t.stick.x + r)) / r,
-                                -((p.pos.y - (t.stick.y + t.stick.height / 2.0)) / r),
-                            )
-                        }),
-                ),
-                None => ((false, false, false), None),
-            };
-            self.game.set_touch(crate::touch_input::TouchHeld {
-                shield: held.0,
-                fire: held.1,
-                thrust: held.2,
+                        .find(|p| {
+                            !self.prev_fingers.contains(&p.id)
+                                && chrome::hit(&t.stick, p.pos.x, p.pos.y)
+                        })
+                        .map(|p| p.id);
+                }
+            }
+            self.prev_fingers = fingers.iter().map(|p| p.id).collect();
+
+            // Thumb vector in pad units (may exceed 1 when dragged
+            // past the rim — that's full deflection, i.e. thrust).
+            // Widget Y-up flips to the game's screen-down axis.
+            let thumb = self.stick_finger.and_then(|id| {
+                let t = self.touch_layout.as_ref()?;
+                let p = fingers.iter().find(|p| p.id == id)?;
+                let r = (t.stick.width / 2.0).max(1.0);
+                Some((
+                    (p.pos.x - (t.stick.x + r)) / r,
+                    -((p.pos.y - (t.stick.y + t.stick.height / 2.0)) / r),
+                ))
             });
+
+            // Buttons hold while any NON-stick finger covers them.
+            let held = match &self.touch_layout {
+                Some(t) => {
+                    let over = |r: &GuiRect| {
+                        fingers.iter().any(|p| {
+                            Some(p.id) != self.stick_finger && chrome::hit(r, p.pos.x, p.pos.y)
+                        })
+                    };
+                    (over(&t.shield_btn), over(&t.fire_btn))
+                }
+                None => (false, false),
+            };
 
             // Rest-plane calibration: the first sensor reading zeroes
             // the stick, and releasing the pad re-zeroes it to
             // however the phone is held right now.
             let raw = agg_gui::tilt::reading();
             if let Some(raw) = raw {
-                if self.stick_baseline.is_none() || (self.stick_touched && thumb.is_none()) {
+                if self.stick_baseline.is_none() || (was_captured && self.stick_finger.is_none()) {
                     self.stick_baseline = Some(raw);
                 }
             }
-            self.stick_touched = thumb.is_some();
 
             // Steering, in degrees of lean: the thumb overrides tilt
-            // (full pad deflection = full tilt deflection).
+            // (pad rim = full tilt deflection).
             let steer = match thumb {
                 Some((vx, vy)) => Some((
                     vx * crate::joystick::MAX_TILT_DEG,
@@ -188,20 +216,31 @@ impl Widget for TitleScreen {
             };
             self.game.set_tilt(steer);
 
-            let (pos, active) = match steer {
-                Some((x, y)) => (
+            // No thrust button: driving the dot all the way to the
+            // ring IS thrust — while turning too, since rotation and
+            // thrust both read the same vector.
+            let (pos, active, thrust) = match steer {
+                Some((x, y)) => {
+                    let mag = (x * x + y * y).sqrt();
                     (
-                        x / crate::joystick::MAX_TILT_DEG,
-                        y / crate::joystick::MAX_TILT_DEG,
-                    ),
-                    thumb.is_some() || (x * x + y * y).sqrt() >= crate::joystick::DEAD_ZONE_DEG,
-                ),
-                None => ((0.0, 0.0), false),
+                        (
+                            x / crate::joystick::MAX_TILT_DEG,
+                            y / crate::joystick::MAX_TILT_DEG,
+                        ),
+                        thumb.is_some() || mag >= crate::joystick::DEAD_ZONE_DEG,
+                        mag >= crate::joystick::MAX_TILT_DEG * 0.95,
+                    )
+                }
+                None => ((0.0, 0.0), false, false),
             };
+            self.game.set_touch(crate::touch_input::TouchHeld {
+                shield: held.0,
+                fire: held.1,
+                thrust,
+            });
             Some(chrome::TouchUi {
                 shield: held.0,
                 fire: held.1,
-                thrust: held.2,
                 stick_pos: pos,
                 stick_active: active,
             })
