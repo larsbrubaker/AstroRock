@@ -39,6 +39,12 @@ pub struct TitleScreen {
     touch_layout: Option<chrome::TouchLayout>,
     /// Tilt steering asked for once (the shell handles permission).
     tilt_requested: bool,
+    /// The calibrated rest plane: raw tilt at the last stick release
+    /// (or the first reading). Steering is measured from here.
+    stick_baseline: Option<(f64, f64)>,
+    /// A thumb was on the joystick pad last frame — its release
+    /// recalibrates the rest plane.
+    stick_touched: bool,
 }
 
 impl TitleScreen {
@@ -70,6 +76,8 @@ impl TitleScreen {
             game_rect: (0.0, 0.0, 1.0, 1.0),
             touch_layout: None,
             tilt_requested: false,
+            stick_baseline: None,
+            stick_touched: false,
         }
     }
 
@@ -123,24 +131,80 @@ impl Widget for TitleScreen {
     fn paint(&mut self, ctx: &mut dyn DrawCtx) {
         // Mobile: virtual gamepad + tilt steering, polled per frame.
         let touch_mode = agg_gui::input_profile::is_mobile_touch();
-        let touch_held = if touch_mode {
+        let touch_ui = if touch_mode {
             if !self.tilt_requested {
                 agg_gui::tilt::request_enable();
                 self.tilt_requested = true;
             }
             let fingers = agg_gui::touch_points::active();
             let over = |r: &GuiRect| fingers.iter().any(|p| chrome::hit(r, p.pos.x, p.pos.y));
-            let held = match &self.touch_layout {
-                Some(t) => (over(&t.shield_btn), over(&t.fire_btn), over(&t.thrust_btn)),
-                None => (false, false, false),
+            // Buttons hold while any finger covers them; a thumb on
+            // the joystick pad steers directly (widget Y-up flips to
+            // the game's screen-down steering axis).
+            let (held, thumb) = match &self.touch_layout {
+                Some(t) => (
+                    (over(&t.shield_btn), over(&t.fire_btn), over(&t.thrust_btn)),
+                    fingers
+                        .iter()
+                        .find(|p| chrome::hit(&t.stick, p.pos.x, p.pos.y))
+                        .map(|p| {
+                            let r = (t.stick.width / 2.0).max(1.0);
+                            (
+                                (p.pos.x - (t.stick.x + r)) / r,
+                                -((p.pos.y - (t.stick.y + t.stick.height / 2.0)) / r),
+                            )
+                        }),
+                ),
+                None => ((false, false, false), None),
             };
             self.game.set_touch(crate::touch_input::TouchHeld {
                 shield: held.0,
                 fire: held.1,
                 thrust: held.2,
             });
-            self.game.set_tilt(agg_gui::tilt::reading());
-            Some(held)
+
+            // Rest-plane calibration: the first sensor reading zeroes
+            // the stick, and releasing the pad re-zeroes it to
+            // however the phone is held right now.
+            let raw = agg_gui::tilt::reading();
+            if let Some(raw) = raw {
+                if self.stick_baseline.is_none() || (self.stick_touched && thumb.is_none()) {
+                    self.stick_baseline = Some(raw);
+                }
+            }
+            self.stick_touched = thumb.is_some();
+
+            // Steering, in degrees of lean: the thumb overrides tilt
+            // (full pad deflection = full tilt deflection).
+            let steer = match thumb {
+                Some((vx, vy)) => Some((
+                    vx * crate::joystick::MAX_TILT_DEG,
+                    vy * crate::joystick::MAX_TILT_DEG,
+                )),
+                None => raw.map(|(x, y)| {
+                    let b = self.stick_baseline.unwrap_or((0.0, 0.0));
+                    (x - b.0, y - b.1)
+                }),
+            };
+            self.game.set_tilt(steer);
+
+            let (pos, active) = match steer {
+                Some((x, y)) => (
+                    (
+                        x / crate::joystick::MAX_TILT_DEG,
+                        y / crate::joystick::MAX_TILT_DEG,
+                    ),
+                    thumb.is_some() || (x * x + y * y).sqrt() >= crate::joystick::DEAD_ZONE_DEG,
+                ),
+                None => ((0.0, 0.0), false),
+            };
+            Some(chrome::TouchUi {
+                shield: held.0,
+                fire: held.1,
+                thrust: held.2,
+                stick_pos: pos,
+                stick_active: active,
+            })
         } else {
             self.game.set_tilt(None);
             None
@@ -165,7 +229,7 @@ impl Widget for TitleScreen {
             h,
             self.game.music_on,
             self.game.sfx_on,
-            touch_held,
+            touch_ui,
             &self.icons,
         );
         self.music_btn = layout.music_btn;

@@ -31,21 +31,27 @@ const FA_CROSSHAIRS: &str = "\u{f05b}";
 const FA_ROCKET: &str = "\u{f135}";
 const FA_BARS: &str = "\u{f0c9}";
 
-/// Touch-zone width on each side in mobile landscape — thumb-sized
-/// hold targets flanking the game.
-pub const TOUCH_W: f64 = 116.0;
-/// Bottom touch-zone height in mobile portrait.
-pub const TOUCH_BAR_H: f64 = 132.0;
-/// Touch button size (hold targets — bigger than the icon toggles).
-const TOUCH_BTN: f64 = 92.0;
-
-/// The mobile virtual-gamepad rects: shield under the left thumb,
-/// fire + thrust under the right, and the menu (Esc) tap target.
+/// The mobile virtual-gamepad rects: the tilt joystick pad, shield
+/// and thrust under the left thumb, fire under the right, and the
+/// menu (Esc) tap target.
 pub struct TouchLayout {
+    pub stick: GuiRect,
     pub shield_btn: GuiRect,
     pub fire_btn: GuiRect,
     pub thrust_btn: GuiRect,
     pub menu_btn: GuiRect,
+}
+
+/// Per-frame state the touch chrome renders from.
+#[derive(Clone, Copy, Default)]
+pub struct TouchUi {
+    pub shield: bool,
+    pub fire: bool,
+    pub thrust: bool,
+    /// Dot position in steering units (length 1 = full deflection).
+    pub stick_pos: (f64, f64),
+    /// Steering engaged (outside the dead zone, or thumb on the pad).
+    pub stick_active: bool,
 }
 
 /// Where everything landed this frame, in widget coords (bottom-left
@@ -144,131 +150,187 @@ fn touch_button(ctx: &mut dyn DrawCtx, rect: &GuiRect, glyph: &str, held: bool, 
     );
 }
 
-/// The mobile-touch layout: virtual-gamepad zones flanking the game
-/// (landscape) or under it (portrait), plus the menu tap target and
-/// the usual icon toggles tucked into the leftover space.
-#[allow(clippy::too_many_arguments)]
+/// Every rect the touch layout produces — pure geometry, unit-tested
+/// for non-overlap across orientations. Left column, top to bottom:
+/// tilt joystick (tap/release recalibrates the rest plane), shield,
+/// thrust. Right column: music + sfx mutes, fullscreen + Esc, fire.
+pub(crate) struct TouchRects {
+    pub game: (f64, f64, f64, f64),
+    pub landscape: bool,
+    pub col_w: f64,
+    pub right_x: f64,
+    pub zone_h: f64,
+    pub stick: GuiRect,
+    pub shield: GuiRect,
+    pub thrust: GuiRect,
+    pub fire: GuiRect,
+    pub fs: GuiRect,
+    pub menu: GuiRect,
+    pub music: GuiRect,
+    pub sfx: GuiRect,
+}
+
+/// Compute the touch layout. The playfield always wins: max HEIGHT
+/// in landscape (columns take the leftover width), max WIDTH in
+/// portrait (a bottom zone takes the leftover height) — down to a
+/// floor where the game gives back just enough for usable thumbs.
+/// Controls scale to their zone so nothing ever overlaps.
+pub(crate) fn touch_rects(w: f64, h: f64) -> TouchRects {
+    const PAD: f64 = 10.0;
+    const GAP: f64 = 12.0;
+    const MIN_COL: f64 = 58.0;
+    const MIN_ZONE: f64 = 96.0;
+    let landscape = w >= h;
+    let aspect = game_aspect();
+    let (dx, dy, dw, dh, col_w, left_x, right_x, zone_h) = if landscape {
+        let dw = (h * aspect).min((w - 2.0 * MIN_COL).max(1.0));
+        let dh = dw / aspect;
+        let col_w = ((w - dw) / 2.0).max(1.0);
+        (col_w, (h - dh) / 2.0, dw, dh, col_w, 0.0, col_w + dw, h)
+    } else {
+        let dh = (w / aspect).min((h - MIN_ZONE).max(1.0));
+        let dw = dh * aspect;
+        let zone_h = (h - dh).max(1.0);
+        // Game at the top, controls below; two half-width columns.
+        (
+            (w - dw) / 2.0,
+            h - dh,
+            dw,
+            dh,
+            w / 2.0,
+            0.0,
+            w / 2.0,
+            zone_h,
+        )
+    };
+
+    // Big-button size: three stacked per column plus a small pair
+    // row, never wider than the column, clamped to thumb sizes.
+    let small = 36.0_f64.min(((col_w - 3.0 * PAD) / 2.0).max(20.0));
+    let big = (col_w - 2.0 * PAD)
+        .min((zone_h - 2.0 * (small + GAP) - 2.0 * PAD - 2.0 * GAP) / 3.0)
+        .clamp(30.0, 104.0);
+
+    // Left column, bottom-anchored: thrust (bottom), shield, stick.
+    let lcx = left_x + col_w / 2.0;
+    let thrust = GuiRect::new(lcx - big / 2.0, PAD, big, big);
+    let shield = GuiRect::new(lcx - big / 2.0, PAD + big + GAP, big, big);
+    let stick = GuiRect::new(lcx - big / 2.0, PAD + 2.0 * (big + GAP), big, big);
+
+    // Right column, bottom-anchored: fire (bottom), then the
+    // fullscreen+Esc pair, then the music+sfx mutes on top.
+    let rcx = right_x + col_w / 2.0;
+    let fire = GuiRect::new(rcx - big / 2.0, PAD, big, big);
+    let row1 = PAD + big + GAP;
+    let row2 = row1 + small + GAP;
+    let fs = GuiRect::new(rcx - small - 4.0, row1, small, small);
+    let menu = GuiRect::new(rcx + 4.0, row1, small, small);
+    let music = GuiRect::new(rcx - small - 4.0, row2, small, small);
+    let sfx = GuiRect::new(rcx + 4.0, row2, small, small);
+
+    TouchRects {
+        game: (dx, dy, dw, dh),
+        landscape,
+        col_w,
+        right_x,
+        zone_h,
+        stick,
+        shield,
+        thrust,
+        fire,
+        fs,
+        menu,
+        music,
+        sfx,
+    }
+}
+
 fn paint_touch(
     ctx: &mut dyn DrawCtx,
     w: f64,
     h: f64,
     music_on: bool,
     sfx_on: bool,
-    held: (bool, bool, bool),
+    ui: TouchUi,
     icons: &Arc<Font>,
 ) -> ChromeLayout {
     let panel_bg = Color::from_rgb8(24, 28, 36);
     let edge = Color::from_rgb8(56, 63, 79);
-    let landscape = w >= h;
-    let (game_x, game_y, game_w, game_h) = if landscape {
-        (TOUCH_W, 0.0, (w - 2.0 * TOUCH_W).max(1.0), h)
-    } else {
-        (0.0, TOUCH_BAR_H, w, (h - TOUCH_BAR_H).max(1.0))
-    };
+    let r = touch_rects(w, h);
 
     // Zone panels.
     ctx.set_fill_color(panel_bg);
     ctx.begin_path();
-    if landscape {
-        ctx.rect(0.0, 0.0, TOUCH_W, h);
-        ctx.rect(w - TOUCH_W, 0.0, TOUCH_W, h);
+    if r.landscape {
+        ctx.rect(0.0, 0.0, r.col_w, h);
+        ctx.rect(r.right_x, 0.0, r.col_w, h);
     } else {
-        ctx.rect(0.0, 0.0, w, TOUCH_BAR_H);
+        ctx.rect(0.0, 0.0, w, r.zone_h);
     }
     ctx.fill();
     ctx.set_fill_color(edge);
     ctx.begin_path();
-    if landscape {
-        ctx.rect(TOUCH_W - 1.0, 0.0, 1.0, h);
-        ctx.rect(w - TOUCH_W, 0.0, 1.0, h);
+    if r.landscape {
+        ctx.rect(r.col_w - 1.0, 0.0, 1.0, h);
+        ctx.rect(r.right_x, 0.0, 1.0, h);
     } else {
-        ctx.rect(0.0, TOUCH_BAR_H - 1.0, w, 1.0);
+        ctx.rect(0.0, r.zone_h - 1.0, w, 1.0);
     }
     ctx.fill();
 
-    // Aspect-fit the game into its zone.
-    let scale = (game_w / crate::game::SCREEN_W as f64).min(game_h / crate::game::SCREEN_H as f64);
-    let dw = crate::game::SCREEN_W as f64 * scale;
-    let dh = crate::game::SCREEN_H as f64 * scale;
-    let dx = game_x + (game_w - dw) * 0.5;
-    let dy = game_y + (game_h - dh) * 0.5;
+    // The metaball joystick pad, rasterized at layout size.
+    let stick_px = (r.stick.width.min(r.stick.height) as usize).max(16);
+    let img = crate::joystick::render(stick_px, ui.stick_pos, ui.stick_active);
+    ctx.draw_image_rgba_arc(
+        &Arc::new(img),
+        stick_px as u32,
+        stick_px as u32,
+        r.stick.x,
+        r.stick.y,
+        r.stick.width,
+        r.stick.height,
+    );
 
-    let (shield_btn, fire_btn, thrust_btn, menu_btn, music_btn, sfx_btn, fullscreen_btn) =
-        if landscape {
-            let lx = (TOUCH_W - TOUCH_BTN) / 2.0;
-            let rx = w - TOUCH_W + lx;
-            (
-                // Shield low under the left thumb; fire low right,
-                // thrust stacked above it.
-                GuiRect::new(lx, 24.0, TOUCH_BTN, TOUCH_BTN),
-                GuiRect::new(rx, 24.0, TOUCH_BTN, TOUCH_BTN),
-                GuiRect::new(rx, 24.0 + TOUCH_BTN + 16.0, TOUCH_BTN, TOUCH_BTN),
-                // Menu (Esc) at the top-right; toggles top-left.
-                GuiRect::new(
-                    w - TOUCH_W + (TOUCH_W - BTN) / 2.0,
-                    h - 12.0 - BTN,
-                    BTN,
-                    BTN,
-                ),
-                GuiRect::new(8.0, h - 12.0 - BTN, BTN, BTN),
-                GuiRect::new(8.0 + BTN + 8.0, h - 12.0 - BTN, BTN, BTN),
-                GuiRect::new(8.0, h - 2.0 * (12.0 + BTN), BTN, BTN),
-            )
-        } else {
-            let by = (TOUCH_BAR_H - TOUCH_BTN) / 2.0;
-            let small_y = TOUCH_BAR_H - 8.0 - 30.0;
-            let cx = w / 2.0;
-            (
-                GuiRect::new(12.0, by, TOUCH_BTN, TOUCH_BTN),
-                GuiRect::new(w - 12.0 - TOUCH_BTN, by, TOUCH_BTN, TOUCH_BTN),
-                GuiRect::new(w - 2.0 * (12.0 + TOUCH_BTN), by, TOUCH_BTN, TOUCH_BTN),
-                GuiRect::new(cx - BTN - 6.0, 8.0, BTN, 30.0),
-                GuiRect::new(cx + 6.0, 8.0, BTN, 30.0),
-                GuiRect::new(cx - BTN - 6.0, small_y, BTN, 30.0),
-                GuiRect::new(cx + 6.0, small_y, BTN, 30.0),
-            )
-        };
-
-    let (shield_held, fire_held, thrust_held) = held;
-    touch_button(ctx, &shield_btn, FA_SHIELD, shield_held, icons);
-    touch_button(ctx, &fire_btn, FA_CROSSHAIRS, fire_held, icons);
-    touch_button(ctx, &thrust_btn, FA_ROCKET, thrust_held, icons);
-    icon_button(ctx, &menu_btn, FA_BARS, true, icons);
-    icon_button(ctx, &music_btn, FA_MUSIC, music_on, icons);
-    icon_button(ctx, &sfx_btn, FA_VOLUME, sfx_on, icons);
+    touch_button(ctx, &r.shield, FA_SHIELD, ui.shield, icons);
+    touch_button(ctx, &r.thrust, FA_ROCKET, ui.thrust, icons);
+    touch_button(ctx, &r.fire, FA_CROSSHAIRS, ui.fire, icons);
+    icon_button(ctx, &r.music, FA_MUSIC, music_on, icons);
+    icon_button(ctx, &r.sfx, FA_VOLUME, sfx_on, icons);
+    icon_button(ctx, &r.menu, FA_BARS, true, icons);
     let fs_glyph = if agg_gui::fullscreen::is_active() {
         FA_COMPRESS
     } else {
         FA_EXPAND
     };
-    icon_button(ctx, &fullscreen_btn, fs_glyph, true, icons);
+    icon_button(ctx, &r.fs, fs_glyph, true, icons);
 
     ChromeLayout {
-        game: (dx, dy, dw, dh),
-        music_btn,
-        sfx_btn,
-        fullscreen_btn,
+        game: r.game,
+        music_btn: r.music,
+        sfx_btn: r.sfx,
+        fullscreen_btn: r.fs,
         touch: Some(TouchLayout {
-            shield_btn,
-            fire_btn,
-            thrust_btn,
-            menu_btn,
+            stick: r.stick,
+            shield_btn: r.shield,
+            fire_btn: r.fire,
+            thrust_btn: r.thrust,
+            menu_btn: r.menu,
         }),
     }
 }
 
 /// Paint backdrop, rail/bar, buttons, and the frame around the (still
 /// unpainted) game rect; the caller blits the game image into
-/// `layout.game` afterwards. `touch_held` enables the mobile
-/// virtual-gamepad layout and lights the held buttons.
-#[allow(clippy::too_many_arguments)]
+/// `layout.game` afterwards. `touch` enables the mobile
+/// virtual-gamepad layout, lighting held buttons and positioning the
+/// joystick dot.
 pub fn paint(
     ctx: &mut dyn DrawCtx,
     w: f64,
     h: f64,
     music_on: bool,
     sfx_on: bool,
-    touch_held: Option<(bool, bool, bool)>,
+    touch: Option<TouchUi>,
     icons: &Arc<Font>,
 ) -> ChromeLayout {
     let backdrop = Color::from_rgb8(11, 13, 18);
@@ -280,8 +342,8 @@ pub fn paint(
     ctx.rect(0.0, 0.0, w, h);
     ctx.fill();
 
-    if let Some(held) = touch_held {
-        return paint_touch(ctx, w, h, music_on, sfx_on, held, icons);
+    if let Some(ui) = touch {
+        return paint_touch(ctx, w, h, music_on, sfx_on, ui, icons);
     }
 
     // Side rail whenever full-height aspect-fit leaves the slack for
@@ -363,5 +425,87 @@ pub fn paint(
         sfx_btn,
         fullscreen_btn,
         touch: None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn overlaps(a: &GuiRect, b: &GuiRect) -> bool {
+        a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height
+    }
+
+    /// Requirement: mobile controls never overlap each other or the
+    /// game surface, across phone-ish and degenerate window sizes.
+    #[test]
+    fn touch_controls_never_overlap() {
+        for (w, h) in [
+            (844.0, 390.0), // landscape phone
+            (390.0, 844.0), // portrait phone
+            (932.0, 430.0),
+            (360.0, 640.0),
+            (640.0, 360.0),
+            (320.0, 480.0), // small portrait
+            (568.0, 320.0), // small landscape
+        ] {
+            let r = touch_rects(w, h);
+            let rects = [
+                ("stick", &r.stick),
+                ("shield", &r.shield),
+                ("thrust", &r.thrust),
+                ("fire", &r.fire),
+                ("fs", &r.fs),
+                ("menu", &r.menu),
+                ("music", &r.music),
+                ("sfx", &r.sfx),
+            ];
+            for i in 0..rects.len() {
+                for j in i + 1..rects.len() {
+                    assert!(
+                        !overlaps(rects[i].1, rects[j].1),
+                        "{}x{}: {} overlaps {}",
+                        w,
+                        h,
+                        rects[i].0,
+                        rects[j].0
+                    );
+                }
+            }
+            let game = GuiRect::new(r.game.0, r.game.1, r.game.2, r.game.3);
+            for (name, rect) in rects {
+                assert!(
+                    !overlaps(rect, &game),
+                    "{w}x{h}: {name} overlaps the game surface"
+                );
+                assert!(
+                    rect.x >= -0.01
+                        && rect.y >= -0.01
+                        && rect.x + rect.width <= w + 0.01
+                        && rect.y + rect.height <= h + 0.01,
+                    "{w}x{h}: {name} leaves the window"
+                );
+            }
+        }
+    }
+
+    /// Requirement: the playfield is maximal — full width in
+    /// portrait, full height in landscape (until the control floor).
+    #[test]
+    fn playfield_maximizes_the_long_axis() {
+        let l = touch_rects(844.0, 390.0);
+        assert!(l.landscape);
+        assert!((l.game.3 - 390.0).abs() < 0.01, "landscape: full height");
+
+        let p = touch_rects(390.0, 844.0);
+        assert!(!p.landscape);
+        assert!((p.game.2 - 390.0).abs() < 0.01, "portrait: full width");
+        // Game hugs the top of the window in portrait.
+        assert!((p.game.1 + p.game.3 - 844.0).abs() < 0.01);
+
+        // Narrow landscape: the game shrinks to keep the columns
+        // usable, and stays centered.
+        let n = touch_rects(700.0, 480.0);
+        assert!(n.col_w >= 57.9, "columns keep their floor: {}", n.col_w);
     }
 }
