@@ -31,7 +31,7 @@ use crate::gloops::Gloops;
 use crate::goodies::Goodies;
 use crate::heartbeat::HeartBeat;
 use crate::hks::Hks;
-use crate::input::{self, Binding, KeysHeld};
+use crate::input::{Binding, KeysHeld};
 use crate::intermission::{Intermission, LevelStats};
 use crate::menu::Menu;
 use crate::palette::{FadeBlits, Palette};
@@ -40,11 +40,13 @@ use crate::radar::Radar;
 use crate::rand::Rand;
 use crate::rect::Rect;
 use crate::rocks::Rocks;
+use crate::settings::{Settings, SettingsStore};
 use crate::spawnfx::{CompletedSpawn, SpawnFx, SpawnKind};
 use crate::speaker::{self, Speaker};
 use crate::spikeballs::SpikeBalls;
 use crate::statbar::StatBar;
 use crate::thrust::Thrust;
+use crate::touch_input::TouchHeld;
 use crate::virtual_frame::VirtualFrame;
 
 /// `#define NUMSTARS 50`
@@ -137,6 +139,15 @@ pub struct Game {
     /// MSVC `rand()` (never srand'd — seed 1): burns the randomized
     /// LocalRand/NetRand draw counts at `START_ONEPLAYER`.
     pub(crate) crt_seed: u32,
+    /// The modern `Astro.cfg` (file on native, localStorage on wasm).
+    settings_store: Option<Box<dyn SettingsStore>>,
+    /// Mobile virtual-gamepad buttons currently held (OR'd into the
+    /// keyboard state while Playing) — see touch_input.rs.
+    pub touch: TouchHeld,
+    /// Tilt steering: the rotation frame (0..32) the tilt vector
+    /// points at; the ship turns toward it at the normal key-rotate
+    /// speed. `None` inside the dead zone.
+    pub(crate) tilt_target: Option<f32>,
 }
 
 impl Game {
@@ -223,7 +234,50 @@ impl Game {
             demo_run: None,
             last_demo: usize::MAX,
             crt_seed: 1,
+            settings_store: None,
+            touch: TouchHeld::default(),
+            tilt_target: None,
         }
+    }
+
+    /// Attach the platform's settings store and apply what it holds
+    /// (`LoadConfig` at startup; absent/corrupt data keeps defaults).
+    pub fn set_settings_store(&mut self, store: Box<dyn SettingsStore>) {
+        if let Some(s) = store.load().as_deref().and_then(Settings::from_json) {
+            self.menu.bindings = s.bindings();
+            self.menu.start_level = s.start_level.min(crate::menu::MAX_START_LEVEL);
+            self.menu.master_volume = s.master_volume.clamp(0.0, 1.0);
+            self.menu.music_volume = s.music_volume.clamp(0.0, 1.0);
+            self.music_on = s.music_on;
+            self.sfx_on = s.sfx_on;
+        }
+        self.settings_store = Some(store);
+    }
+
+    /// `SaveConfig` — write the current state through the store.
+    fn save_settings(&mut self) {
+        let Some(store) = self.settings_store.as_deref() else {
+            return;
+        };
+        let mut s = Settings::default();
+        s.set_bindings(&self.menu.bindings);
+        s.start_level = self.menu.start_level;
+        s.master_volume = self.menu.master_volume;
+        s.music_volume = self.menu.music_volume;
+        s.music_on = self.music_on;
+        s.sfx_on = self.sfx_on;
+        store.save(&s.to_json());
+    }
+
+    /// Chrome-bar toggles — persisted like every other setting.
+    pub fn toggle_music(&mut self) {
+        self.music_on = !self.music_on;
+        self.save_settings();
+    }
+
+    pub fn toggle_sfx(&mut self) {
+        self.sfx_on = !self.sfx_on;
+        self.save_settings();
     }
 
     /// Milliseconds since construction — the widget's paint clock.
@@ -345,12 +399,18 @@ impl Game {
                     // animates per beat (LocalRand only — visual).
                     self.menu.beat(&mut self.local_rand, &mut self.events);
                     // `STATE_MAIN`: Enter starts a game (line 758ff);
-                    // clicks arrive through on_mouse_up.
-                    if self.enter_pressed && self.menu.enter_starts() {
+                    // elsewhere it acts like Done. Clicks arrive
+                    // through on_mouse_up.
+                    if self.enter_pressed {
                         self.enter_pressed = false;
-                        let level = self.menu.start_level;
-                        self.start_game(level);
-                        continue;
+                        if self.menu.enter_starts() {
+                            let level = self.menu.start_level;
+                            self.start_game(level);
+                            continue;
+                        }
+                        if let Some(action) = self.menu.on_enter() {
+                            self.handle_menu_action(action);
+                        }
                     }
                 }
                 Screen::Demo => {
@@ -399,18 +459,31 @@ impl Game {
             // consume it this beat doesn't get it later (`FlushKeys`).
             self.enter_pressed = false;
         }
+        // `SaveConfig`: persist once a change settles (never mid-drag).
+        if self.menu.settings_dirty && self.menu.dragging.is_none() {
+            self.menu.settings_dirty = false;
+            self.save_settings();
+        }
         self.pump_audio();
     }
 
     /// One beat of `UpdateAll` — runs while Playing, during the
     /// intermission iris, and under the GAME OVER overlay.
     pub(crate) fn sim_beat(&mut self, clip: Rect) {
+        // Touch buttons and tilt steering merge into the key state —
+        // but only for live play; demo playback feeds `keys` directly
+        // and must never see local inputs.
+        let (touch, tilt) = if self.state == Screen::Demo {
+            (TouchHeld::default(), (false, false))
+        } else {
+            (self.touch, self.tilt_rotate())
+        };
         self.ship.set_inputs(ShipInputs {
-            left: self.keys.left,
-            right: self.keys.right,
-            thrust: self.keys.thrust,
-            shield: self.keys.shield,
-            fire: self.keys.fire,
+            left: self.keys.left || tilt.0,
+            right: self.keys.right || tilt.1,
+            thrust: self.keys.thrust || touch.thrust,
+            shield: self.keys.shield || touch.shield,
+            fire: self.keys.fire || touch.fire,
             bomb: self.keys.bomb,
         });
 
@@ -611,6 +684,8 @@ impl Game {
                 for _ in self.events.drain() {}
                 self.due_voice = None;
             }
+            // The Config Sound sliders scale the built-in headroom.
+            sink.set_volumes(self.menu.master_volume, self.menu.music_volume);
             let playing = matches!(self.state, Screen::Playing | Screen::Demo);
             let alive = playing && self.ship.sprite.visible;
             sink.set_loop(
@@ -666,7 +741,12 @@ impl Game {
             }
             return true;
         }
-        match input::binding(key) {
+        // `STATE_GETAKEY`: the config screen's capture eats the next
+        // press before the bindings see it.
+        if self.state == Screen::Menu && down && self.menu.capture_key(key, &mut self.events) {
+            return true;
+        }
+        match self.menu.bindings.lookup(key) {
             Some(Binding::Left) => self.keys.left = down,
             Some(Binding::Right) => self.keys.right = down,
             Some(Binding::Thrust) => self.keys.thrust = down,

@@ -34,6 +34,11 @@ pub struct TitleScreen {
     /// Where the game surface landed last paint (widget coords) —
     /// translates mouse events into 640x480 game coordinates.
     game_rect: (f64, f64, f64, f64),
+    /// Mobile virtual-gamepad rects from the last paint — polled
+    /// against the active fingers each frame.
+    touch_layout: Option<chrome::TouchLayout>,
+    /// Tilt steering asked for once (the shell handles permission).
+    tilt_requested: bool,
 }
 
 impl TitleScreen {
@@ -42,16 +47,29 @@ impl TitleScreen {
     }
 
     pub fn new_with_audio(audio: Option<Box<dyn AudioSink>>) -> Self {
+        Self::new_with_platform(audio, None)
+    }
+
+    pub fn new_with_platform(
+        audio: Option<Box<dyn AudioSink>>,
+        settings: Option<Box<dyn crate::settings::SettingsStore>>,
+    ) -> Self {
+        let mut game = Game::new(audio);
+        if let Some(store) = settings {
+            game.set_settings_store(store);
+        }
         Self {
             bounds: GuiRect::default(),
             children: Vec::new(),
-            game: Game::new(audio),
+            game,
             rgba: Vec::new(),
             icons: Arc::new(Font::from_slice(ICON_FONT_BYTES).expect("fa.ttf parses")),
             music_btn: GuiRect::default(),
             sfx_btn: GuiRect::default(),
             fullscreen_btn: GuiRect::default(),
             game_rect: (0.0, 0.0, 1.0, 1.0),
+            touch_layout: None,
+            tilt_requested: false,
         }
     }
 
@@ -103,6 +121,31 @@ impl Widget for TitleScreen {
     }
 
     fn paint(&mut self, ctx: &mut dyn DrawCtx) {
+        // Mobile: virtual gamepad + tilt steering, polled per frame.
+        let touch_mode = agg_gui::input_profile::is_mobile_touch();
+        let touch_held = if touch_mode {
+            if !self.tilt_requested {
+                agg_gui::tilt::request_enable();
+                self.tilt_requested = true;
+            }
+            let fingers = agg_gui::touch_points::active();
+            let over = |r: &GuiRect| fingers.iter().any(|p| chrome::hit(r, p.pos.x, p.pos.y));
+            let held = match &self.touch_layout {
+                Some(t) => (over(&t.shield_btn), over(&t.fire_btn), over(&t.thrust_btn)),
+                None => (false, false, false),
+            };
+            self.game.set_touch(crate::touch_input::TouchHeld {
+                shield: held.0,
+                fire: held.1,
+                thrust: held.2,
+            });
+            self.game.set_tilt(agg_gui::tilt::reading());
+            Some(held)
+        } else {
+            self.game.set_tilt(None);
+            None
+        };
+
         self.game.advance(self.game.now_ms());
         self.game.compose();
         // Keep the loop animating — content changes every frame, so the
@@ -116,11 +159,20 @@ impl Widget for TitleScreen {
         // Window chrome (chrome.rs): backdrop, rail/bar, buttons, and
         // the frame; it returns where the game surface goes.
         let (w, h) = (self.bounds.width, self.bounds.height);
-        let layout = chrome::paint(ctx, w, h, self.game.music_on, self.game.sfx_on, &self.icons);
+        let layout = chrome::paint(
+            ctx,
+            w,
+            h,
+            self.game.music_on,
+            self.game.sfx_on,
+            touch_held,
+            &self.icons,
+        );
         self.music_btn = layout.music_btn;
         self.sfx_btn = layout.sfx_btn;
         self.fullscreen_btn = layout.fullscreen_btn;
         self.game_rect = layout.game;
+        self.touch_layout = layout.touch;
         let (dx, dy, dw, dh) = layout.game;
 
         // A fresh Arc every frame, deliberately: the slice variant's
@@ -164,13 +216,22 @@ impl Widget for TitleScreen {
             }
             Event::MouseDown { pos, .. } => {
                 if chrome::hit(&self.music_btn, pos.x, pos.y) {
-                    self.game.music_on = !self.game.music_on;
+                    self.game.toggle_music();
                     EventResult::Consumed
                 } else if chrome::hit(&self.sfx_btn, pos.x, pos.y) {
-                    self.game.sfx_on = !self.game.sfx_on;
+                    self.game.toggle_sfx();
                     EventResult::Consumed
                 } else if chrome::hit(&self.fullscreen_btn, pos.x, pos.y) {
                     agg_gui::fullscreen::request_toggle();
+                    EventResult::Consumed
+                } else if self
+                    .touch_layout
+                    .as_ref()
+                    .is_some_and(|t| chrome::hit(&t.menu_btn, pos.x, pos.y))
+                {
+                    // The mobile menu button = the Esc key.
+                    self.game.set_key(&Key::Escape, true);
+                    self.game.set_key(&Key::Escape, false);
                     EventResult::Consumed
                 } else {
                     let (gx, gy) = self.to_game_coords(pos.x, pos.y);

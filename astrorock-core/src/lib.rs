@@ -35,6 +35,7 @@ pub mod hks;
 pub mod input;
 pub mod intermission;
 pub mod menu;
+pub mod menu_config;
 pub mod palette;
 pub mod pship;
 pub mod radar;
@@ -42,7 +43,9 @@ pub mod rand;
 pub mod rect;
 pub mod rocks;
 pub mod sequence;
+pub mod settings;
 pub mod shots;
+pub mod showcase;
 pub mod spawnfx;
 pub mod speaker;
 pub mod spikeballs;
@@ -51,6 +54,7 @@ pub mod sprite_list;
 pub mod statbar;
 pub mod thrust;
 pub mod title_screen;
+pub mod touch_input;
 pub mod virtual_frame;
 
 use std::sync::Arc;
@@ -90,7 +94,17 @@ pub fn build_astrorock_app_with_audio(
     _font: Arc<Font>,
     audio: Option<Box<dyn audio::AudioSink>>,
 ) -> App {
-    let mut app = App::new(Box::new(TitleScreen::new_with_audio(audio)));
+    build_astrorock_app_with_platform(_font, audio, None)
+}
+
+/// Build the app with the full platform kit: audio sink plus the
+/// settings store (JSON file on native, localStorage on wasm).
+pub fn build_astrorock_app_with_platform(
+    _font: Arc<Font>,
+    audio: Option<Box<dyn audio::AudioSink>>,
+    settings: Option<Box<dyn settings::SettingsStore>>,
+) -> App {
+    let mut app = App::new(Box::new(TitleScreen::new_with_platform(audio, settings)));
     // Held-key tracking needs KeyUp delivery, which only reaches the
     // focused widget — focus the game surface from the first frame.
     app.focus_first();

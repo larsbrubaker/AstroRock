@@ -126,6 +126,37 @@ pub const NO_PNG: [&[u8]; 2] = [
     include_bytes!("../../assets/interfac/no2.png"),
 ];
 
+/// Config Controls key-row buttons (`rTurnl1Bmp` .. `rShield2Bmp`).
+pub const TURNL_PNG: [&[u8]; 2] = [
+    include_bytes!("../../assets/interfac/turnl1.png"),
+    include_bytes!("../../assets/interfac/turnl2.png"),
+];
+pub const TURNR_PNG: [&[u8]; 2] = [
+    include_bytes!("../../assets/interfac/turnr1.png"),
+    include_bytes!("../../assets/interfac/turnr2.png"),
+];
+pub const FIREBTN_PNG: [&[u8]; 2] = [
+    include_bytes!("../../assets/interfac/fire1.png"),
+    include_bytes!("../../assets/interfac/fire2.png"),
+];
+pub const THRUSTBTN_PNG: [&[u8]; 2] = [
+    include_bytes!("../../assets/interfac/thrust1.png"),
+    include_bytes!("../../assets/interfac/thrust2.png"),
+];
+pub const BLADE_PNG: [&[u8]; 2] = [
+    include_bytes!("../../assets/interfac/blade1.png"),
+    include_bytes!("../../assets/interfac/blade2.png"),
+];
+pub const SHIELDBTN_PNG: [&[u8]; 2] = [
+    include_bytes!("../../assets/interfac/shield1.png"),
+    include_bytes!("../../assets/interfac/shield2.png"),
+];
+
+/// Config Sound slider art: the groove (`rGroveBmp`) and the drag tab
+/// (`rDragBmp`).
+pub const GROVE_PNG: &[u8] = include_bytes!("../../assets/interfac/grove.png");
+pub const DRAG_PNG: &[u8] = include_bytes!("../../assets/interfac/drag.png");
+
 /// `rGloop2Pal` / `rGloop3Pal` — gloop tier recolor remap tables.
 pub const GLOOP2_PAL: &[u8] = include_bytes!("../../assets/palettes/gloop2.pal");
 pub const GLOOP3_PAL: &[u8] = include_bytes!("../../assets/palettes/gloop3.pal");

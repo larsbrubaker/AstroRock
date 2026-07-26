@@ -6,8 +6,9 @@
 //! and hands over the shared app built by `astrorock-core`.
 
 mod audio;
+mod settings;
 
-use astrorock_core::{build_astrorock_app_with_audio, load_default_font};
+use astrorock_core::{build_astrorock_app_with_platform, load_default_font};
 
 fn main() {
     let sink =
@@ -15,7 +16,9 @@ fn main() {
     if sink.is_none() {
         eprintln!("audio: no output device — running silent");
     }
-    let app = build_astrorock_app_with_audio(load_default_font(), sink);
+    let store =
+        Box::new(settings::FileSettings::new()) as Box<dyn astrorock_core::settings::SettingsStore>;
+    let app = build_astrorock_app_with_platform(load_default_font(), sink, Some(store));
 
     demo_wgpu::native_shell::run(
         demo_wgpu::NativeShellConfig {

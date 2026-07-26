@@ -46,6 +46,9 @@ pub struct RodioAudio {
     music_rate: f32,
     /// The single voice channel — a new line stops the previous one.
     voice: Option<Sink>,
+    /// Config Sound slider fractions on top of the headroom.
+    master: f32,
+    music_vol: f32,
 }
 
 impl RodioAudio {
@@ -104,7 +107,13 @@ impl RodioAudio {
             music_track: 0,
             music_rate: 1.0,
             voice: None,
+            master: 1.0,
+            music_vol: 1.0,
         })
+    }
+
+    fn sfx_gain(&self) -> f32 {
+        SFX_VOLUME * self.master
     }
 
     /// `assets/music/` relative to the cwd (cargo run / cargo dev) or
@@ -124,16 +133,17 @@ impl RodioAudio {
 impl AudioSink for RodioAudio {
     fn play(&mut self, sfx: SfxId, _pan: i32) {
         if let (Some(buf), Ok(sink)) = (self.buffers.get(&sfx), Sink::try_new(&self.handle)) {
-            sink.set_volume(SFX_VOLUME);
+            sink.set_volume(self.sfx_gain());
             sink.append(buf.clone());
             sink.detach();
         }
     }
 
     fn set_loop(&mut self, which: LoopKind, active: bool) {
+        let gain = self.sfx_gain();
         let sink = self.loops.entry(which).or_insert_with(|| {
             let sink = Sink::try_new(&self.handle).expect("loop sink");
-            sink.set_volume(SFX_VOLUME);
+            sink.set_volume(gain);
             if let Ok(decoder) = Decoder::new(Cursor::new(which.bytes())) {
                 sink.append(decoder.buffered().repeat_infinite());
             }
@@ -169,7 +179,7 @@ impl AudioSink for RodioAudio {
         if self.music.is_none() {
             self.music = Sink::try_new(&self.handle).ok();
             if let Some(sink) = &self.music {
-                sink.set_volume(MUSIC_VOLUME);
+                sink.set_volume(MUSIC_VOLUME * self.music_vol);
                 sink.set_speed(self.music_rate);
             }
         }
@@ -216,9 +226,27 @@ impl AudioSink for RodioAudio {
             prev.stop();
         }
         if let (Some(buf), Ok(sink)) = (self.buffers.get(&sfx), Sink::try_new(&self.handle)) {
-            sink.set_volume(SFX_VOLUME);
+            sink.set_volume(self.sfx_gain());
             sink.append(buf.clone());
             self.voice = Some(sink);
+        }
+    }
+
+    fn set_volumes(&mut self, master: f32, music: f32) {
+        if master == self.master && music == self.music_vol {
+            return;
+        }
+        self.master = master;
+        self.music_vol = music;
+        // Live sinks re-gain immediately (drag feedback).
+        for sink in self.loops.values() {
+            sink.set_volume(SFX_VOLUME * master);
+        }
+        if let Some(sink) = &self.voice {
+            sink.set_volume(SFX_VOLUME * master);
+        }
+        if let Some(sink) = &self.music {
+            sink.set_volume(MUSIC_VOLUME * music);
         }
     }
 

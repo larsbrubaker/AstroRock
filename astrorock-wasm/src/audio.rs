@@ -49,6 +49,9 @@ pub struct WebAudio {
     /// gate lifts rejects, and an unhandled rejection spams the
     /// console every frame.
     swallow: Closure<dyn FnMut(JsValue)>,
+    /// Config Sound slider fractions on top of the headroom.
+    master: f32,
+    music_vol: f64,
 }
 
 /// Relative to the page, staged by demo/sync-assets.ts.
@@ -126,6 +129,8 @@ impl WebAudio {
             voice: None,
             music,
             swallow: Closure::new(|_| {}),
+            master: 1.0,
+            music_vol: 1.0,
         })
     }
 
@@ -219,6 +224,19 @@ impl AudioSink for WebAudio {
             if el.playback_rate() != rate {
                 el.set_playback_rate(rate);
             }
+        }
+    }
+
+    fn set_volumes(&mut self, master: f32, music: f32) {
+        let music = music as f64;
+        if master == self.master && music == self.music_vol {
+            return;
+        }
+        self.master = master;
+        self.music_vol = music;
+        self.sfx_gain.gain().set_value(SFX_VOLUME * master);
+        if let Some(el) = &self.music {
+            el.set_volume(MUSIC_VOLUME * music);
         }
     }
 }

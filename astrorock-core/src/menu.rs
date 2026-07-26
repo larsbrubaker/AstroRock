@@ -16,28 +16,33 @@
 //! config screen with the game frozen behind it (the original's Esc
 //! went to a quit-confirm; options only lived on the start screen).
 
-use std::rc::Rc;
-
 use crate::assets;
 use crate::events::{Events, GameEvent};
 use crate::font::{Font, Justify};
 use crate::frame::{BlitMode, Frame};
+use crate::input::{Binding, Bindings};
 use crate::palette::{FadeBlits, Palette};
 use crate::rand::Rand;
-use crate::sequence::{self, FrameSequence};
+use crate::showcase::Showcase;
 
 /// `#define VERSION_NUMBER "V:1.0.2"` (+ the port's tag).
 const VERSION: &str = "V:1.0.2 RUST";
 /// Start-level picker bounds — the original gated the top by
 /// `HighestLevelReached` from Astro.cfg; until the settings store
 /// lands, the cap is the config table size.
-const MAX_START_LEVEL: u32 = 49;
+pub const MAX_START_LEVEL: u32 = 49;
 
 /// Which page is showing (`ScreenState`).
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Page {
     Main,
     Config,
+    /// `STATE_CONFIG_KEYS` — the key-remap screen.
+    ConfigKeys,
+    /// `STATE_GETAKEY` — waiting for the next keypress to bind.
+    GetKey(Binding),
+    /// `STATE_CONFIG_SOUND` — the volume sliders.
+    ConfigSound,
     Credits,
     ReallyQuit,
 }
@@ -57,146 +62,7 @@ pub enum MenuAction {
     EndGame,
 }
 
-/// The bad-guy showcase monitor (`SwitchBadGuy`/`UpdateBadGuyScreen`/
-/// `DrawBadGuyScreen`): a random subject from 15 — the ship, five
-/// enemies, a rock, and the eight goodies — switches every
-/// `SWITCHBADGUYPAUSE` beats behind nine frames of TV static and
-/// fades in through the `FadeBlit` tables.
-struct Showcase {
-    seqs: Vec<Rc<FrameSequence>>,
-    statics: [Frame; 3],
-    cur: usize,
-    pause: i32,
-    cur_frame: f32,
-    spike_dir: f32,
-    cur_fade: usize,
-}
-
-/// `#define SWITCHBADGUYPAUSE 150`
-const SWITCH_PAUSE: i32 = 150;
-/// `#define NUMSTATICUPDATES 9`
-const NUM_STATIC_UPDATES: i32 = 9;
-/// `BADGUYX/Y` — direct screen coordinates.
-const BADGUY_X: i32 = 320;
-const BADGUY_Y: i32 = 150;
-/// Spikeballs are showcase type 2 (they get the roll-walk dance).
-const TYPE_SPIKEBALL: usize = 2;
-
-impl Showcase {
-    fn new() -> Self {
-        // `SwitchBadGuy` type order, goodies in `GetType` order.
-        let seqs: Vec<Rc<FrameSequence>> = vec![
-            sequence::ship(),
-            sequence::gloop(),
-            sequence::spkball(),
-            sequence::bomber(),
-            sequence::hk(),
-            sequence::fastdeth(),
-            sequence::ast_big(),
-            sequence::health(),
-            sequence::pows(),
-            sequence::rapid(),
-            sequence::spred(),
-            sequence::bombg(),
-            sequence::gun01(),
-            sequence::gun02(),
-            sequence::one_up(),
-        ];
-        Self {
-            seqs,
-            statics: [
-                assets::frame_from_indexed_png(assets::STATIC1_PNG),
-                assets::frame_from_indexed_png(assets::STATIC2_PNG),
-                assets::frame_from_indexed_png(assets::STATIC3_PNG),
-            ],
-            cur: 0,
-            // Starts at the threshold: the first beat switches.
-            pause: SWITCH_PAUSE,
-            cur_frame: 0.0,
-            spike_dir: 1.0,
-            cur_fade: 0,
-        }
-    }
-
-    /// One menu beat (`UpdateBadGuyScreen` + the switch check).
-    fn update(&mut self, local_rand: &mut Rand, events: &mut Events) {
-        if self.pause >= SWITCH_PAUSE {
-            let n = self.seqs.len() as u32;
-            let mut next = local_rand.rand(n) as usize;
-            while next == self.cur {
-                next = local_rand.rand(n) as usize;
-            }
-            self.cur = next;
-            self.pause = 0;
-            // `curframe` is a persistent static — it keeps counting
-            // across switches (no reset in SwitchBadGuy).
-        }
-
-        if self.cur == TYPE_SPIKEBALL {
-            // The roll-walk dance (LocalRand — visual only).
-            self.cur_frame += self.spike_dir;
-            if self.cur_frame > 60.0 {
-                self.cur_frame = 0.0;
-            }
-            if self.cur_frame < 0.0 {
-                self.cur_frame = 60.0;
-            }
-            if (self.cur_frame as i32) % 20 == 0 {
-                self.cur_frame = (local_rand.rand(4) * 20) as f32;
-                if local_rand.rand(2) != 0 {
-                    self.spike_dir = -1.0;
-                    if self.cur_frame == 0.0 {
-                        self.cur_frame = 60.0;
-                    }
-                } else {
-                    self.spike_dir = 1.0;
-                    if self.cur_frame == 60.0 {
-                        self.cur_frame = 0.0;
-                    }
-                }
-            }
-        } else {
-            self.cur_frame += 1.0;
-        }
-
-        if self.pause == 0 {
-            events.push(GameEvent::SfxStatic);
-        }
-
-        // Fade the fresh subject in from black behind the static.
-        if self.pause >= NUM_STATIC_UPDATES - 1
-            && self.pause < crate::palette::NUM_FADES as i32 + NUM_STATIC_UPDATES
-        {
-            let fade = crate::palette::NUM_FADES as i32 + NUM_STATIC_UPDATES - self.pause;
-            self.cur_fade = (fade.min(crate::palette::NUM_FADES as i32 - 1)) as usize;
-        } else {
-            self.cur_fade = 0;
-        }
-        self.pause += 1;
-    }
-
-    /// `DrawBadGuyScreen`.
-    fn draw(&self, screen: &mut Frame, fades: &FadeBlits) {
-        let seq = &self.seqs[self.cur];
-        let index = (self.cur_frame as u32 % seq.num_frames) as usize;
-        let art = &seq.frames[index];
-        let blit = fades.blit(self.cur_fade);
-        screen.blit(
-            art,
-            &art.bounds(),
-            BADGUY_X - art.hot_x,
-            BADGUY_Y - art.hot_y,
-            blit.to_mode(),
-        );
-
-        if self.pause < NUM_STATIC_UPDATES {
-            let st = &self.statics[(self.pause % 3) as usize];
-            screen.blit(st, &st.bounds(), 225, 118, BlitMode::Transparent0);
-        }
-    }
-}
-
-struct Button {
+pub(crate) struct Button {
     up: Frame,
     down: Frame,
     x: i32,
@@ -205,7 +71,7 @@ struct Button {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-enum ButtonId {
+pub(crate) enum ButtonId {
     StartGame,
     NetRock,
     ViewHigh,
@@ -221,6 +87,13 @@ enum ButtonId {
     CfgSound,
     QuitYes,
     QuitNo,
+    /// The Config Controls key rows (`SetTurnLeftKey` ..).
+    KeyLeft,
+    KeyRight,
+    KeyThrust,
+    KeyFire,
+    KeyShield,
+    KeyBomb,
 }
 
 impl Button {
@@ -248,18 +121,31 @@ pub struct Menu {
     backdrop: Frame,
     pub palette: Palette,
     reallyq: Frame,
-    font: Font,
+    pub(crate) font: Font,
     buttons: Vec<Button>,
-    page: Page,
+    pub(crate) page: Page,
     /// Buttons fire on release over the same button (`ButtonCheck`).
     pressed: Option<ButtonId>,
     cursor: (i32, i32),
-    /// `GlobalStartLevel` (persisted later with the settings store).
+    /// `GlobalStartLevel` (persisted through the settings store).
     pub start_level: u32,
     /// Set when Esc opened the menu mid-game: Done/Esc resumes.
     pub from_game: bool,
     /// The bad-guy showcase monitor in the backdrop's top screen.
-    showcase: Showcase,
+    pub(crate) showcase: Showcase,
+    /// The remappable keys (`GlobalLeftKey` ..) — the config screens
+    /// edit these; gameplay looks keys up through them.
+    pub bindings: Bindings,
+    /// Config Sound slider fractions, 0 (silent) .. 1 (full).
+    pub master_volume: f32,
+    pub music_volume: f32,
+    /// Slider art + drag state (menu_config.rs).
+    pub(crate) grove: Frame,
+    pub(crate) drag_tab: Frame,
+    pub(crate) dragging: Option<crate::menu_config::SliderId>,
+    /// Set whenever a persisted setting changes; the game saves and
+    /// clears it (`SaveConfig` ran on the config page's Done).
+    pub settings_dirty: bool,
 }
 
 impl Menu {
@@ -281,6 +167,14 @@ impl Menu {
             Button::new(assets::CFGSND_PNG, 245, 324, ButtonId::CfgSound),
             Button::new(assets::YES_PNG, 136, 310, ButtonId::QuitYes),
             Button::new(assets::NO_PNG, 344, 310, ButtonId::QuitNo),
+            // Config Controls rows: CONFIGTOP 242 + CONFIGSKIP 30 per
+            // row; left column x=136, right column x=344.
+            Button::new(assets::TURNL_PNG, 136, 272, ButtonId::KeyLeft),
+            Button::new(assets::FIREBTN_PNG, 136, 302, ButtonId::KeyFire),
+            Button::new(assets::THRUSTBTN_PNG, 136, 332, ButtonId::KeyThrust),
+            Button::new(assets::TURNR_PNG, 344, 272, ButtonId::KeyRight),
+            Button::new(assets::BLADE_PNG, 344, 302, ButtonId::KeyBomb),
+            Button::new(assets::SHIELDBTN_PNG, 344, 332, ButtonId::KeyShield),
         ];
         Self {
             backdrop: assets::frame_from_indexed_png(assets::START_PNG),
@@ -294,6 +188,13 @@ impl Menu {
             start_level: 0,
             from_game: false,
             showcase: Showcase::new(),
+            bindings: Bindings::default(),
+            master_volume: 1.0,
+            music_volume: 1.0,
+            grove: assets::frame_from_indexed_png(assets::GROVE_PNG),
+            drag_tab: assets::frame_from_indexed_png(assets::DRAG_PNG),
+            dragging: None,
+            settings_dirty: false,
         }
     }
 
@@ -337,6 +238,19 @@ impl Menu {
                 ButtonId::CfgSound,
                 ButtonId::Done,
             ],
+            Page::ConfigKeys => &[
+                ButtonId::KeyLeft,
+                ButtonId::KeyFire,
+                ButtonId::KeyThrust,
+                ButtonId::KeyRight,
+                ButtonId::KeyBomb,
+                ButtonId::KeyShield,
+                ButtonId::Done,
+            ],
+            // `STATE_GETAKEY` shows only the prompt; `STATE_CONFIG_
+            // SOUND`'s sliders are custom-drawn (menu_config.rs).
+            Page::GetKey(_) => &[],
+            Page::ConfigSound => &[ButtonId::Done],
             Page::Credits => &[ButtonId::Done],
             Page::ReallyQuit => &[ButtonId::QuitYes, ButtonId::QuitNo],
         }
@@ -364,10 +278,14 @@ impl Menu {
 
     pub fn on_mouse_move(&mut self, x: i32, y: i32) {
         self.cursor = (x, y);
+        self.slider_mouse_move(x);
     }
 
     pub fn on_mouse_down(&mut self, x: i32, y: i32) {
         self.cursor = (x, y);
+        if self.slider_mouse_down(x, y) {
+            return;
+        }
         self.pressed = self.page_buttons().iter().find_map(|&id| {
             let b = self.button(id);
             b.contains_at(self.button_pos(id), x, y).then_some(id)
@@ -376,6 +294,9 @@ impl Menu {
 
     pub fn on_mouse_up(&mut self, x: i32, y: i32, events: &mut Events) -> Option<MenuAction> {
         self.cursor = (x, y);
+        if self.slider_mouse_up() {
+            return None;
+        }
         let pressed = self.pressed.take()?;
         if !self
             .button(pressed)
@@ -387,26 +308,66 @@ impl Menu {
         self.activate(pressed)
     }
 
-    /// Esc inside the menu: main -> quit confirm, sub-pages -> back,
-    /// Esc-opened-from-game -> resume.
+    /// Esc inside the menu, following `DoDone`'s page ladder: key and
+    /// sound configs step back to Config; Config and the flat pages go
+    /// to Main (or resume the frozen game when Esc opened the menu);
+    /// Main asks the quit confirm.
     pub fn on_escape(&mut self) -> Option<MenuAction> {
-        if self.from_game {
-            return Some(MenuAction::ResumeGame);
-        }
         match self.page {
+            Page::GetKey(_) => {
+                self.page = Page::ConfigKeys;
+                None
+            }
+            Page::ConfigKeys | Page::ConfigSound => {
+                self.page = Page::Config;
+                None
+            }
+            Page::Config | Page::Credits => {
+                if self.from_game {
+                    Some(MenuAction::ResumeGame)
+                } else {
+                    self.page = Page::Main;
+                    None
+                }
+            }
             Page::Main => {
                 self.page = Page::ReallyQuit;
                 None
             }
             Page::ReallyQuit => {
-                self.page = Page::Main;
-                None
-            }
-            _ => {
-                self.page = Page::Main;
-                None
+                if self.from_game {
+                    Some(MenuAction::ResumeGame)
+                } else {
+                    self.page = Page::Main;
+                    None
+                }
             }
         }
+    }
+
+    /// Enter anywhere but the main page acts like Done (`SC_RETURN`
+    /// checks in every sub-state's update arm).
+    pub fn on_enter(&mut self) -> Option<MenuAction> {
+        match self.page {
+            Page::Main | Page::ReallyQuit => None,
+            _ => self.on_escape(),
+        }
+    }
+
+    /// `STATE_GETAKEY`: the next keypress binds (with the
+    /// `CheckAndSwap` duplicate rule); Enter/Escape cancel. Returns
+    /// true when the key was consumed by capture.
+    pub fn capture_key(&mut self, key: &agg_gui::event::Key, events: &mut Events) -> bool {
+        let Page::GetKey(action) = self.page else {
+            return false;
+        };
+        if Bindings::assignable(key) {
+            self.bindings.assign(action, key.clone());
+            self.settings_dirty = true;
+            events.push(GameEvent::SfxClicked);
+        }
+        self.page = Page::ConfigKeys;
+        true
     }
 
     fn activate(&mut self, id: ButtonId) -> Option<MenuAction> {
@@ -437,28 +398,64 @@ impl Menu {
                 None
             }
             ButtonId::Done => {
-                if self.from_game && self.page == Page::Config {
-                    Some(MenuAction::ResumeGame)
-                } else {
-                    self.page = Page::Main;
-                    None
+                // `DoDone`'s ladder: sub-configs -> Config; Config ->
+                // save + Main (or resume the frozen game).
+                match self.page {
+                    Page::ConfigKeys | Page::ConfigSound => {
+                        self.page = Page::Config;
+                        None
+                    }
+                    Page::Config if self.from_game => Some(MenuAction::ResumeGame),
+                    _ => {
+                        self.page = Page::Main;
+                        None
+                    }
                 }
             }
             ButtonId::LevelDown => {
                 self.start_level = self.start_level.saturating_sub(1);
+                self.settings_dirty = true;
                 None
             }
             ButtonId::LevelUp => {
                 self.start_level = (self.start_level + 1).min(MAX_START_LEVEL);
+                self.settings_dirty = true;
                 None
             }
-            // Systems still to come: net play, high scores, help
-            // pages, key remapping, sound sliders.
-            ButtonId::NetRock
-            | ButtonId::ViewHigh
-            | ButtonId::Help
-            | ButtonId::CfgKeys
-            | ButtonId::CfgSound => None,
+            ButtonId::CfgKeys => {
+                self.page = Page::ConfigKeys;
+                None
+            }
+            ButtonId::CfgSound => {
+                self.page = Page::ConfigSound;
+                None
+            }
+            ButtonId::KeyLeft => {
+                self.page = Page::GetKey(Binding::Left);
+                None
+            }
+            ButtonId::KeyRight => {
+                self.page = Page::GetKey(Binding::Right);
+                None
+            }
+            ButtonId::KeyThrust => {
+                self.page = Page::GetKey(Binding::Thrust);
+                None
+            }
+            ButtonId::KeyFire => {
+                self.page = Page::GetKey(Binding::Fire);
+                None
+            }
+            ButtonId::KeyShield => {
+                self.page = Page::GetKey(Binding::Shield);
+                None
+            }
+            ButtonId::KeyBomb => {
+                self.page = Page::GetKey(Binding::Bomb);
+                None
+            }
+            // Systems still to come: net play, high scores, help.
+            ButtonId::NetRock | ButtonId::ViewHigh | ButtonId::Help => None,
         }
     }
 
@@ -499,6 +496,9 @@ impl Menu {
 
         match self.page {
             Page::Main => {}
+            Page::ConfigKeys => self.draw_config_keys(screen),
+            Page::GetKey(action) => self.draw_get_key(screen, action),
+            Page::ConfigSound => self.draw_config_sound(screen),
             Page::Config => {
                 // "Start Level   %d" at (STARTLEVELLEFT, START_LEVEL_TOP).
                 let text = format!("Start Level   {}", self.start_level);
@@ -569,6 +569,7 @@ impl Default for Menu {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::showcase::{NUM_STATIC_UPDATES, SWITCH_PAUSE};
 
     #[test]
     fn click_fires_on_release_over_the_same_button() {
