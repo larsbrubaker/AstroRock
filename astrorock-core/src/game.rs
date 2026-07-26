@@ -476,7 +476,7 @@ impl Game {
             thrust: self.keys.thrust || touch.thrust,
             shield: self.keys.shield || touch.shield,
             fire: self.keys.fire || touch.fire,
-            bomb: self.keys.bomb,
+            bomb: self.keys.bomb || touch.bomb,
         });
 
         // `AdvanceFrames` order: Explosions FIRST, then Rocks, then
