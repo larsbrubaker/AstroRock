@@ -37,6 +37,7 @@ pub mod intermission;
 pub mod joystick;
 pub mod menu;
 pub mod menu_config;
+pub mod menu_pages;
 pub mod palette;
 pub mod pship;
 pub mod radar;

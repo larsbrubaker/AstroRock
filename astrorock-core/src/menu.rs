@@ -44,6 +44,14 @@ pub enum Page {
     /// `STATE_CONFIG_SOUND` — the volume sliders.
     ConfigSound,
     Credits,
+    /// `STATE_HELP` — the bad-guy field guide, one subject at a time.
+    Help,
+    /// `STATE_HIGHSCORES` — the table.
+    HighScores,
+    /// `STATE_NEWHIGHSCORE` — typing a name onto the table.
+    NewHighScore,
+    /// Net Rock placeholder (`STATE_NONETPLAY`'s modern cousin).
+    NetSoon,
     ReallyQuit,
 }
 
@@ -94,6 +102,9 @@ pub(crate) enum ButtonId {
     KeyFire,
     KeyShield,
     KeyBomb,
+    /// Help-page subject pager (`HelpLeft`/`HelpRight`).
+    HelpLeft,
+    HelpRight,
 }
 
 impl Button {
@@ -146,6 +157,15 @@ pub struct Menu {
     /// Set whenever a persisted setting changes; the game saves and
     /// clears it (`SaveConfig` ran on the config page's Done).
     pub settings_dirty: bool,
+    /// Help page subject (`CurHelpType` — persists between visits).
+    pub(crate) cur_help: usize,
+    /// `GlobalHighScores` — 5 (name, score), sorted descending.
+    pub high_scores: Vec<(String, u32)>,
+    /// `NewHighText` + the score awaiting entry.
+    pub(crate) new_high_text: String,
+    pub(crate) pending_score: u32,
+    /// Menu beat counter (`CursorFlashOn` for the name prompt).
+    pub(crate) flash: u32,
 }
 
 impl Menu {
@@ -175,6 +195,9 @@ impl Menu {
             Button::new(assets::TURNR_PNG, 344, 272, ButtonId::KeyRight),
             Button::new(assets::BLADE_PNG, 344, 302, ButtonId::KeyBomb),
             Button::new(assets::SHIELDBTN_PNG, 344, 332, ButtonId::KeyShield),
+            // Help pager at (218/418, HELPTOP + 5).
+            Button::new(assets::BUTTONL_PNG, 218, 375, ButtonId::HelpLeft),
+            Button::new(assets::BUTTONR_PNG, 418, 375, ButtonId::HelpRight),
         ];
         Self {
             backdrop: assets::frame_from_indexed_png(assets::START_PNG),
@@ -195,21 +218,40 @@ impl Menu {
             drag_tab: assets::frame_from_indexed_png(assets::DRAG_PNG),
             dragging: None,
             settings_dirty: false,
+            cur_help: 0,
+            high_scores: crate::settings::default_high_scores(),
+            new_high_text: String::new(),
+            pending_score: 0,
+            flash: 0,
         }
     }
 
     /// One 30 Hz menu beat (`StartScreenUpdate(isgameupdate=1)`): the
-    /// showcase monitor animates on every page. (The original skips
-    /// the SUBJECT SWITCH during `STATE_HELP` because help pages pick
-    /// their subject manually — that gate arrives with the help
-    /// pages.)
+    /// showcase monitor animates on every page, but the SUBJECT
+    /// SWITCH pauses during help — those pages pick their subject
+    /// manually (`ScreenState != STATE_HELP`).
     pub fn beat(&mut self, local_rand: &mut Rand, events: &mut Events) {
-        self.showcase.update(local_rand, events);
+        self.showcase
+            .update(local_rand, events, self.page != Page::Help);
+        self.flash = self.flash.wrapping_add(1);
     }
 
-    /// Which buttons live on the current page.
+    /// Which buttons live on the current page. On wasm there is no
+    /// process to quit, so Quit disappears from the main page (and
+    /// Credits recenters via `button_pos`).
     fn page_buttons(&self) -> &'static [ButtonId] {
         match self.page {
+            #[cfg(target_arch = "wasm32")]
+            Page::Main => &[
+                ButtonId::StartGame,
+                ButtonId::NetRock,
+                ButtonId::ViewHigh,
+                ButtonId::Credits,
+                ButtonId::Config,
+                ButtonId::Help,
+                ButtonId::Demo,
+            ],
+            #[cfg(not(target_arch = "wasm32"))]
             Page::Main => &[
                 ButtonId::StartGame,
                 ButtonId::NetRock,
@@ -252,6 +294,10 @@ impl Menu {
             Page::GetKey(_) => &[],
             Page::ConfigSound => &[ButtonId::Done],
             Page::Credits => &[ButtonId::Done],
+            Page::Help => &[ButtonId::HelpLeft, ButtonId::HelpRight, ButtonId::Done],
+            Page::HighScores => &[ButtonId::Done],
+            Page::NewHighScore => &[],
+            Page::NetSoon => &[ButtonId::Done],
             Page::ReallyQuit => &[ButtonId::QuitYes, ButtonId::QuitNo],
         }
     }
@@ -322,7 +368,7 @@ impl Menu {
                 self.page = Page::Config;
                 None
             }
-            Page::Config | Page::Credits => {
+            Page::Config | Page::Credits | Page::Help | Page::HighScores | Page::NetSoon => {
                 if self.from_game {
                     Some(MenuAction::ResumeGame)
                 } else {
@@ -330,8 +376,18 @@ impl Menu {
                     None
                 }
             }
+            // Esc during name entry commits like Enter — losing a
+            // typed name to a reflex Esc would sting.
+            Page::NewHighScore => {
+                self.commit_high_score();
+                None
+            }
             Page::Main => {
-                self.page = Page::ReallyQuit;
+                // No process to quit on wasm — Esc idles on Main.
+                #[cfg(not(target_arch = "wasm32"))]
+                {
+                    self.page = Page::ReallyQuit;
+                }
                 None
             }
             Page::ReallyQuit => {
@@ -454,8 +510,36 @@ impl Menu {
                 self.page = Page::GetKey(Binding::Bomb);
                 None
             }
-            // Systems still to come: net play, high scores, help.
-            ButtonId::NetRock | ButtonId::ViewHigh | ButtonId::Help => None,
+            ButtonId::Help => {
+                // `ShowHelp`: the monitor switches to the current
+                // help subject with the usual static burst.
+                self.page = Page::Help;
+                self.showcase.switch_to(self.cur_help);
+                None
+            }
+            ButtonId::HelpLeft => {
+                if self.cur_help > 0 {
+                    self.cur_help -= 1;
+                    self.showcase.switch_to(self.cur_help);
+                }
+                None
+            }
+            ButtonId::HelpRight => {
+                if self.cur_help < crate::menu_pages::NUM_HELP_SUBJECTS - 1 {
+                    self.cur_help += 1;
+                    self.showcase.switch_to(self.cur_help);
+                }
+                None
+            }
+            ButtonId::ViewHigh => {
+                self.page = Page::HighScores;
+                None
+            }
+            // Net play isn't ported yet — the modern STATE_NONETPLAY.
+            ButtonId::NetRock => {
+                self.page = Page::NetSoon;
+                None
+            }
         }
     }
 
@@ -474,6 +558,11 @@ impl Menu {
                 ButtonId::Quit => return (344, 370),
                 _ => {}
             }
+        }
+        // Quit is hidden on wasm — Credits centers into its row.
+        #[cfg(target_arch = "wasm32")]
+        if self.page == Page::Main && id == ButtonId::Credits {
+            return (245, 352);
         }
         let b = self.button(id);
         (b.x, b.y)
@@ -499,6 +588,10 @@ impl Menu {
             Page::ConfigKeys => self.draw_config_keys(screen),
             Page::GetKey(action) => self.draw_get_key(screen, action),
             Page::ConfigSound => self.draw_config_sound(screen),
+            Page::Help => self.draw_help(screen),
+            Page::HighScores => self.draw_high_scores(screen),
+            Page::NewHighScore => self.draw_new_high_score(screen),
+            Page::NetSoon => self.draw_net_soon(screen),
             Page::Config => {
                 // "Start Level   %d" at (STARTLEVELLEFT, START_LEVEL_TOP).
                 let text = format!("Start Level   {}", self.start_level);

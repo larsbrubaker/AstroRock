@@ -71,9 +71,18 @@ impl Showcase {
         }
     }
 
+    /// `SwitchBadGuy(type)` — the help pages pick their subject
+    /// manually; the static burst plays like any other switch.
+    pub(crate) fn switch_to(&mut self, subject: usize) {
+        self.cur = subject % self.seqs.len();
+        self.pause = 0;
+    }
+
     /// One menu beat (`UpdateBadGuyScreen` + the switch check).
-    pub(crate) fn update(&mut self, local_rand: &mut Rand, events: &mut Events) {
-        if self.pause >= SWITCH_PAUSE {
+    /// `auto_switch` is off during the help pages (`ScreenState !=
+    /// STATE_HELP` gate in StartScreenUpdate).
+    pub(crate) fn update(&mut self, local_rand: &mut Rand, events: &mut Events, auto_switch: bool) {
+        if auto_switch && self.pause >= SWITCH_PAUSE {
             let n = self.seqs.len() as u32;
             let mut next = local_rand.rand(n) as usize;
             while next == self.cur {

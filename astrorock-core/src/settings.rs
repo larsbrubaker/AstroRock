@@ -34,6 +34,14 @@ pub struct Settings {
     /// dB ramps on `GlobalSetVolume`/`CStreamSoundSetVolume`.
     pub master_volume: f32,
     pub music_volume: f32,
+    /// `GlobalHighScores` — 5 entries, name + score, sorted
+    /// descending (`HSListInit(5,15)`; fresh slots are "EMPTY"/0).
+    pub high_scores: Vec<(String, u32)>,
+}
+
+/// The 1997 fresh-install table.
+pub fn default_high_scores() -> Vec<(String, u32)> {
+    vec![("EMPTY".to_string(), 0); 5]
 }
 
 impl Default for Settings {
@@ -51,6 +59,7 @@ impl Default for Settings {
             sfx_on: true,
             master_volume: 1.0,
             music_volume: 1.0,
+            high_scores: default_high_scores(),
         }
     }
 }
@@ -141,6 +150,55 @@ pub fn string_to_key(s: &str) -> Option<Key> {
     let mut chars = s.chars();
     let c = chars.next()?;
     chars.next().is_none().then_some(Key::Char(c))
+}
+
+impl crate::game::Game {
+    /// Attach the platform's settings store and apply what it holds
+    /// (`LoadConfig` at startup; absent/corrupt data keeps defaults).
+    pub fn set_settings_store(&mut self, store: Box<dyn SettingsStore>) {
+        if let Some(s) = store.load().as_deref().and_then(Settings::from_json) {
+            self.menu.bindings = s.bindings();
+            self.menu.start_level = s.start_level.min(crate::menu::MAX_START_LEVEL);
+            self.menu.master_volume = s.master_volume.clamp(0.0, 1.0);
+            self.menu.music_volume = s.music_volume.clamp(0.0, 1.0);
+            self.music_on = s.music_on;
+            self.sfx_on = s.sfx_on;
+            // The table is always exactly five entries, sorted.
+            let mut scores = s.high_scores;
+            scores.resize(5, ("EMPTY".to_string(), 0));
+            scores.truncate(5);
+            scores.sort_by(|a, b| b.1.cmp(&a.1));
+            self.menu.high_scores = scores;
+        }
+        self.settings_store = Some(store);
+    }
+
+    /// `SaveConfig` — write the current state through the store.
+    pub(crate) fn save_settings(&mut self) {
+        let Some(store) = self.settings_store.as_deref() else {
+            return;
+        };
+        let mut s = Settings::default();
+        s.set_bindings(&self.menu.bindings);
+        s.start_level = self.menu.start_level;
+        s.master_volume = self.menu.master_volume;
+        s.music_volume = self.menu.music_volume;
+        s.music_on = self.music_on;
+        s.sfx_on = self.sfx_on;
+        s.high_scores = self.menu.high_scores.clone();
+        store.save(&s.to_json());
+    }
+
+    /// Chrome-bar toggles — persisted like every other setting.
+    pub fn toggle_music(&mut self) {
+        self.music_on = !self.music_on;
+        self.save_settings();
+    }
+
+    pub fn toggle_sfx(&mut self) {
+        self.sfx_on = !self.sfx_on;
+        self.save_settings();
+    }
 }
 
 #[cfg(test)]
