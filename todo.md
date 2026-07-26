@@ -57,7 +57,10 @@ backed by agg-gui touch/tilt plumbing).
 - High scores: `HighScore.cpp` list + entry + View High button;
   HighestLevelReached gating the start-level picker (store fields
   exist).
-- Joystick/gamepad config (the 1997 joy half of Config Controls).
+- Gamepad button REMAPPING (the 1997 joy half of Config Controls) —
+  fixed-mapping gamepad support itself landed (stick steers, South
+  fires, East/shoulders shield, West bombs, Start/Select = Enter/
+  Esc, native gilrs + Web Gamepad API).
 - Pause overlay (`STATE_PAUSE`, pause.png, Pause key, FastDeaths
   freeze) — Esc-options covers most of the need already.
 - Attract: auto-play a demo after idle time on the main screen
