@@ -63,9 +63,7 @@ const ALTERNATES: [(&Key, Binding); 8] = [
 /// Case-insensitive key equality (Char keys arrive shifted).
 fn key_matches(a: &Key, b: &Key) -> bool {
     match (a, b) {
-        (Key::Char(x), Key::Char(y)) => {
-            x.eq_ignore_ascii_case(y)
-        }
+        (Key::Char(x), Key::Char(y)) => x.eq_ignore_ascii_case(y),
         _ => a == b,
     }
 }
@@ -138,9 +136,11 @@ impl Bindings {
             }
         }
         for (alt, action) in ALTERNATES {
-            if key_matches(alt, key) && !REMAPPABLE.iter().any(|&other| {
-                other != action && key_matches(self.key_for(other), key)
-            }) {
+            if key_matches(alt, key)
+                && !REMAPPABLE
+                    .iter()
+                    .any(|&other| other != action && key_matches(self.key_for(other), key))
+            {
                 return Some(action);
             }
         }

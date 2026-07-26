@@ -170,8 +170,10 @@ mod tests {
     fn corrupt_json_falls_back_to_defaults() {
         assert!(Settings::from_json("not json").is_none());
         // Unknown keys in stored bindings fall back per-slot.
-        let mut s = Settings::default();
-        s.key_fire = "@Other:".into(); // malformed
+        let s = Settings {
+            key_fire: "@Other:".into(), // malformed
+            ..Default::default()
+        };
         assert_eq!(s.bindings().fire, Bindings::default().fire);
         // Partial JSON fills the rest with defaults (serde(default)).
         let partial = Settings::from_json(r#"{"start_level": 3}"#).unwrap();
