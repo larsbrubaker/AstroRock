@@ -21,17 +21,29 @@ fn main() {
         .nth(2)
         .and_then(|s| s.parse().ok())
         .unwrap_or(0);
-    let esc = std::env::args().nth(3).is_some_and(|s| s == "esc");
+    let mode = std::env::args().nth(3).unwrap_or_default();
 
     let mut game = Game::new(None);
     let mut now = 0;
-    if esc {
+    if mode == "esc" {
         game.set_key(&Key::Enter, true);
         now = 40;
         game.advance(now);
         game.set_key(&Key::Enter, false);
         game.set_key(&Key::Escape, true);
         game.set_key(&Key::Escape, false);
+    }
+    let click = |g: &mut Game, x: i32, y: i32| {
+        g.on_mouse_down(x, y);
+        g.on_mouse_up(x, y);
+    };
+    if mode == "keys" || mode == "sound" {
+        click(&mut game, 350, 280); // Configure (344, 272)
+        if mode == "keys" {
+            click(&mut game, 250, 290); // Config Controls (245, 284)
+        } else {
+            click(&mut game, 250, 330); // Config Sound (245, 324)
+        }
     }
     for _ in 0..beats {
         now += 34;

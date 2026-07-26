@@ -288,6 +288,11 @@ pub trait AudioSink {
     /// still-playing previous line ("don't play two at once" —
     /// `PausedSoundPlayer`).
     fn play_voice(&mut self, sfx: SfxId);
+    /// The Config Sound sliders, 0.0..1.0 fractions applied on top of
+    /// the built-in headroom (`GlobalSetVolume` for everything but the
+    /// stream, `CStreamSoundSetVolume` for the music). Called every
+    /// pump; sinks may early-out on unchanged values.
+    fn set_volumes(&mut self, _master: f32, _music: f32) {}
 }
 
 /// `PausedSoundPlayer`: one pending voice slot with a countdown —

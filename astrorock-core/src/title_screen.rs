@@ -42,10 +42,21 @@ impl TitleScreen {
     }
 
     pub fn new_with_audio(audio: Option<Box<dyn AudioSink>>) -> Self {
+        Self::new_with_platform(audio, None)
+    }
+
+    pub fn new_with_platform(
+        audio: Option<Box<dyn AudioSink>>,
+        settings: Option<Box<dyn crate::settings::SettingsStore>>,
+    ) -> Self {
+        let mut game = Game::new(audio);
+        if let Some(store) = settings {
+            game.set_settings_store(store);
+        }
         Self {
             bounds: GuiRect::default(),
             children: Vec::new(),
-            game: Game::new(audio),
+            game,
             rgba: Vec::new(),
             icons: Arc::new(Font::from_slice(ICON_FONT_BYTES).expect("fa.ttf parses")),
             music_btn: GuiRect::default(),
@@ -164,10 +175,10 @@ impl Widget for TitleScreen {
             }
             Event::MouseDown { pos, .. } => {
                 if chrome::hit(&self.music_btn, pos.x, pos.y) {
-                    self.game.music_on = !self.game.music_on;
+                    self.game.toggle_music();
                     EventResult::Consumed
                 } else if chrome::hit(&self.sfx_btn, pos.x, pos.y) {
-                    self.game.sfx_on = !self.game.sfx_on;
+                    self.game.toggle_sfx();
                     EventResult::Consumed
                 } else if chrome::hit(&self.fullscreen_btn, pos.x, pos.y) {
                     agg_gui::fullscreen::request_toggle();
