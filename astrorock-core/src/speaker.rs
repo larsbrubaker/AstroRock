@@ -232,6 +232,7 @@ mod tests {
             goodies: &mut go,
             stats: &mut st,
             clip: Rect::new(0, 0, 2048, 1024),
+            ship_immune: false,
         };
         let mut speaker = Speaker::new();
         speaker.sprite.x_pos = 500.0;
@@ -264,6 +265,7 @@ mod tests {
             goodies: &mut go,
             stats: &mut st,
             clip: Rect::new(0, 0, 2048, 1024),
+            ship_immune: false,
         };
         let mut speaker = Speaker::new();
         let idx = rocks.big().iter().position(|s| s.visible).expect("a rock");

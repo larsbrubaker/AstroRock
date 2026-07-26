@@ -149,10 +149,10 @@ fn touch_button(ctx: &mut dyn DrawCtx, rect: &GuiRect, glyph: &str, held: bool, 
 }
 
 /// Every rect the touch layout produces — pure geometry, unit-tested
-/// for non-overlap across orientations. Left column, top to bottom:
-/// tilt joystick (release recalibrates the rest plane; full
-/// deflection = thrust), shield. Right column: music + sfx mutes,
-/// fullscreen + Esc, fire.
+/// for non-overlap across orientations. Left column: the tilt
+/// joystick alone (release recalibrates the rest plane; deflection
+/// past THRUST_FRAC = thrust). Right column, top to bottom: music +
+/// sfx mutes, fullscreen + Esc, shield, fire.
 pub(crate) struct TouchRects {
     pub game: (f64, f64, f64, f64),
     pub landscape: bool,
@@ -202,37 +202,35 @@ pub(crate) fn touch_rects(w: f64, h: f64) -> TouchRects {
         )
     };
 
-    // Button sizing: the right column stacks fire + two small rows;
-    // the left is just stick + shield, so the stick can grow into
-    // whatever room the column offers (it's the primary control).
+    // Button sizing: the right column stacks shield-over-fire plus
+    // two small rows; the left column is ALL joystick — the left
+    // thumb never has to leave it (shield and fire are never held
+    // together, so both live under the right thumb).
     let small = 36.0_f64.min(((col_w - 3.0 * PAD) / 2.0).max(20.0));
     let big = (col_w - 2.0 * PAD)
-        .min((zone_h - 2.0 * (small + GAP) - 2.0 * PAD - 2.0 * GAP) / 3.0)
+        .min((zone_h - 2.0 * (small + GAP) - 2.0 * PAD - GAP) / 2.0)
         .clamp(30.0, 104.0);
     let stick_size = (col_w - 2.0 * PAD)
-        .min(zone_h - big - 2.0 * PAD - GAP)
-        .clamp(30.0, 180.0);
+        .min(zone_h - 2.0 * PAD)
+        .clamp(30.0, 200.0);
 
-    // Left column, bottom-anchored: shield (bottom), stick above it.
+    // Left column: the joystick alone, bottom-anchored at the thumb.
     let lcx = left_x + col_w / 2.0;
-    let shield = GuiRect::new(lcx - big / 2.0, PAD, big, big);
-    let stick = GuiRect::new(
-        lcx - stick_size / 2.0,
-        PAD + big + GAP,
-        stick_size,
-        stick_size,
-    );
+    let stick = GuiRect::new(lcx - stick_size / 2.0, PAD, stick_size, stick_size);
 
-    // Right column, bottom-anchored: fire (bottom), then the
-    // fullscreen+Esc pair, then the music+sfx mutes on top.
+    // Right column: fire at the bottom thumb spot, shield right
+    // above it; the small buttons (mutes on top, then fullscreen +
+    // Esc) anchor to the TOP of the zone so a firing thumb can't
+    // graze them.
     let rcx = right_x + col_w / 2.0;
     let fire = GuiRect::new(rcx - big / 2.0, PAD, big, big);
-    let row1 = PAD + big + GAP;
-    let row2 = row1 + small + GAP;
-    let fs = GuiRect::new(rcx - small - 4.0, row1, small, small);
-    let menu = GuiRect::new(rcx + 4.0, row1, small, small);
-    let music = GuiRect::new(rcx - small - 4.0, row2, small, small);
-    let sfx = GuiRect::new(rcx + 4.0, row2, small, small);
+    let shield = GuiRect::new(rcx - big / 2.0, PAD + big + GAP, big, big);
+    let row_mutes = zone_h - PAD - small;
+    let row_fs = row_mutes - GAP - small;
+    let music = GuiRect::new(rcx - small - 4.0, row_mutes, small, small);
+    let sfx = GuiRect::new(rcx + 4.0, row_mutes, small, small);
+    let fs = GuiRect::new(rcx - small - 4.0, row_fs, small, small);
+    let menu = GuiRect::new(rcx + 4.0, row_fs, small, small);
 
     TouchRects {
         game: (dx, dy, dw, dh),
