@@ -32,8 +32,6 @@ work. If this file ever describes finished work, that's a bug. Use
   live-frequency support on `AudioSink` loops.
 - Mixer policy from `SoundWin95.cpp` where it's audible: pan by screen
   x (`GetPosRelCenter`) on one-shots.
-- Volume/mute controls (M key, sliders) — land with Phase 8 options
-  UI and the settings store.
 
 ## Phase 8 — Faithful bitmap UI (IN PROGRESS)
 
@@ -47,22 +45,27 @@ static sound), and (modern, by request) Esc in-game pausing into the
 config page — which grows a Quit button routing through the
 `STATE_REALLYENDGAME` confirm to GAME OVER and back to the menu.
 
+Also landed: Config Controls (`STATE_CONFIG_KEYS`/`STATE_GETAKEY`
+with CheckAndSwap), Config Sound (DragButton volume sliders), the
+JSON settings store (file native / localStorage wasm), and the
+mobile virtual gamepad (touch holds + tilt steering, touch_input.rs,
+backed by agg-gui touch/tilt plumbing).
+
 - Help pages (`ppHelpText` from text.hpp) behind the Help button —
   including the showcase's manual subject picker (`SwitchBadGuy` gate
   during `STATE_HELP`, HelpLeft/HelpRight buttons).
-- High scores: `HighScore.cpp` list + entry + View High button.
-- Key remapping (`STATE_CONFIG_KEYS`, cfgkeys art, key capture) —
-  input.rs bindings become data; joystick/gamepad config with it.
-- Sound config (`STATE_CONFIG_SOUND`): DragButton sliders for
-  master/music volume, stereo + mixing toggles (today's chrome
-  toggles remain the shortcut).
+- High scores: `HighScore.cpp` list + entry + View High button;
+  HighestLevelReached gating the start-level picker (store fields
+  exist).
+- Joystick/gamepad config (the 1997 joy half of Config Controls).
 - Pause overlay (`STATE_PAUSE`, pause.png, Pause key, FastDeaths
   freeze) — Esc-options covers most of the need already.
-- Settings store trait (JSON; file on native, localStorage on wasm)
-  replacing binary `Astro.cfg` — key bindings, volumes, start level,
-  HighestLevelReached gating, high scores.
 - Attract: auto-play a demo after idle time on the main screen
   (original `STATE_MAIN` timeout), once demo parity is proven.
+- Verify mobile touch/tilt on a real device: iOS sensor-permission
+  prompt (first tap), landscape/portrait zone layout, tilt axis
+  mapping (screen.orientation fold-in), FA glyphs f132/f05b/f135
+  present in the embedded fa.ttf.
 
 ## Phase 9 — Demo regression suite (IN PROGRESS)
 
@@ -87,6 +90,19 @@ golden pins OUR determinism only.
   shipped exe (backup runs demos in attract) would bisect init vs
   update instantly. `examples/demo_probe.rs` prints the timeline
   and dumps frames.
+- THE INSTRUMENTED C++ REFERENCE (the root-cause tool): a headless
+  x86 `/arch:IA32` build of the original sim with Burgerlib stubbed
+  (~200-line surface: typedefs, KeyArray, LoadAResource fread-by-id
+  from the dump-rez payloads) and the five platform files
+  (HalWin95/SoundWin95/StreamSoundW95/ScreenDD/Ddwindow) replaced by
+  no-ops, driving the game's own demo loop and printing per-beat
+  sync + CheckPlayField. `astrorock-tools dump-rez` landed; the
+  build scaffold lives in the session scratchpad (`cppbuild/`) —
+  fold the stubs + build scripts into a local-only `cppref/` dir
+  once the trace runs (never commit copied game sources).
+  NOTE: the shipped-game backup `C:\Development\Backups\2097-05`
+  referenced in CLAUDE.md does NOT exist on this machine — no exe to
+  run side-by-side; the headless build is the only reference path.
 - Re-bless the golden once 1997 parity is confirmed; the difficulty
   audit (rock speed) is settled by the same event.
 - Attract mode (demo playback from the title screen) — after parity.

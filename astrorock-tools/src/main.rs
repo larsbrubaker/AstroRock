@@ -41,11 +41,15 @@ fn main() -> ExitCode {
         [cmd, in_dir, out_dir] if cmd == "convert-bmps" => {
             convert_bmps(Path::new(in_dir), Path::new(out_dir))
         }
+        [cmd, rezfile, out_dir] if cmd == "dump-rez" => {
+            dump_rez(Path::new(rezfile), Path::new(out_dir))
+        }
         _ => {
             eprintln!(
                 "usage: astrorock-tools extract-rez <rezfile> <REZFILE.hpp> <out-dir>\n\
                         astrorock-tools convert-sprites <spr-dir> <out-dir>\n\
-                        astrorock-tools convert-bmps <bmp-dir> <out-dir>"
+                        astrorock-tools convert-bmps <bmp-dir> <out-dir>\n\
+                        astrorock-tools dump-rez <rezfile> <out-dir>"
             );
             return ExitCode::FAILURE;
         }
@@ -57,6 +61,24 @@ fn main() -> ExitCode {
             ExitCode::FAILURE
         }
     }
+}
+
+/// Dump every resource verbatim as `<out-dir>/<id>.bin` — the payload
+/// store for the instrumented C++ reference build, whose stub
+/// `LoadAResource` freads by numeric ID.
+fn dump_rez(rezfile: &Path, out_dir: &Path) -> Result<(), String> {
+    let data = fs::read(rezfile).map_err(|e| format!("read {}: {e}", rezfile.display()))?;
+    let archive = rez::RezArchive::parse(&data)?;
+    fs::create_dir_all(out_dir).map_err(|e| format!("create {}: {e}", out_dir.display()))?;
+    let mut dumped = 0;
+    for entry in &archive.entries {
+        let payload = archive.payload(entry)?;
+        let path = out_dir.join(format!("{}.bin", entry.id));
+        fs::write(&path, &payload).map_err(|e| format!("write {}: {e}", path.display()))?;
+        dumped += 1;
+    }
+    println!("dumped {dumped} resources to {}", out_dir.display());
+    Ok(())
 }
 
 /// Convert every `.spr` in `in_dir` to `<stem>.png` + `<stem>.json`.
