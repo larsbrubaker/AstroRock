@@ -64,8 +64,10 @@ backed by agg-gui touch/tilt plumbing).
   (original `STATE_MAIN` timeout), once demo parity is proven.
 - Verify mobile touch/tilt on a real device: iOS sensor-permission
   prompt (first tap), landscape/portrait zone layout, tilt axis
-  mapping (screen.orientation fold-in), FA glyphs f132/f05b/f135
-  present in the embedded fa.ttf.
+  mapping (screen.orientation fold-in), orientation lock while
+  fullscreen, joystick rest-plane recalibration on pad release,
+  thumb-override steering, FA glyphs f132/f05b/f135/f0c9 present in
+  the embedded fa.ttf.
 
 ## Phase 9 — Demo regression suite (IN PROGRESS)
 

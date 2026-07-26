@@ -35,8 +35,9 @@ impl Game {
     /// grow clockwise, 32 frames per turn — `atan2(sx, -sy)` in the
     /// game's screen coordinates (y down).
     pub fn set_tilt(&mut self, reading: Option<(f64, f64)>) {
-        /// Degrees of lean before tilt starts steering.
-        const DEAD_ZONE: f64 = 8.0;
+        // Degrees of lean before tilt starts steering — mirrored by
+        // the joystick pad's thin inner ring.
+        const DEAD_ZONE: f64 = crate::joystick::DEAD_ZONE_DEG;
         self.tilt_target = reading.and_then(|(sx, sy)| {
             if (sx * sx + sy * sy).sqrt() < DEAD_ZONE {
                 return None;
