@@ -43,10 +43,17 @@ pub struct CollideCtx<'a> {
     /// `KillPlayer` bonus zeroing).
     pub stats: &'a mut LevelStats,
     pub clip: Rect,
+    /// The level is won (modern, by request): the ship cannot be
+    /// hurt while the iris closes and the tally counts — shots and
+    /// enemy-side collisions still run normally.
+    pub ship_immune: bool,
 }
 
 /// `DamagePlayer`/`KillPlayer` — returns true if the ship died.
 pub fn damage_player(ship: &mut PlayerShip, damage: u32, ctx: &mut CollideCtx) -> bool {
+    if ctx.ship_immune {
+        return false;
+    }
     // "if it's the local player he doesn't get Untouched bonus"
     ctx.stats.untouched = 0;
     if damage >= ship.sprite.hp {

@@ -148,7 +148,15 @@ pub struct Game {
     /// points at; the ship turns toward it at the normal key-rotate
     /// speed. `None` inside the dead zone.
     pub(crate) tilt_target: Option<f32>,
+    /// Beats left before a continue press can respawn after a death
+    /// (modern, by request): players mashing fire when they die
+    /// otherwise re-enter instantly, straight into whatever killed
+    /// them. Level-start spawns are NOT delayed.
+    pub(crate) respawn_delay: i32,
 }
+
+/// One second at 30 Hz — the post-death respawn lockout.
+pub(crate) const RESPAWN_DELAY: i32 = 30;
 
 impl Game {
     pub fn new(audio: Option<Box<dyn AudioSink>>) -> Self {
@@ -237,6 +245,7 @@ impl Game {
             settings_store: None,
             touch: TouchHeld::default(),
             tilt_target: None,
+            respawn_delay: 0,
         }
     }
 
@@ -357,25 +366,6 @@ impl Game {
             .reset(WORLD_W as u32, WORLD_H as u32, &mut self.net_rand);
     }
 
-    /// `AddPlayer` — materialize the ship WHERE IT ALREADY IS: the
-    /// death spot, or the level's pre-rolled spawn point. No new
-    /// position roll — the camera has been parked on the spot the
-    /// whole time, so the player can wait for a safe moment.
-    /// `NewShip` (stat reset) and the one-liner fire only when
-    /// actually dead: surviving a level carries HP and every power-up
-    /// across, exactly like `AddPlayer`'s `LocalPlayerIsDead` gate.
-    pub(crate) fn respawn(&mut self) {
-        if self.local_player_dead {
-            self.events.push(GameEvent::VoiceNewShip);
-            self.ship.new_ship();
-            self.local_player_dead = false;
-        }
-        self.ship.sprite.cur_frame = 0.0;
-        self.ship.sprite.x_delta = 0.0;
-        self.ship.sprite.y_delta = 0.0;
-        self.ship.sprite.visible = true;
-    }
-
     /// Run the 30 Hz simulation up to `now_ms`.
     pub fn advance(&mut self, now_ms: u64) {
         let clip = Self::clip();
@@ -472,15 +462,17 @@ impl Game {
     pub(crate) fn sim_beat(&mut self, clip: Rect) {
         // Touch buttons and tilt steering merge into the key state —
         // but only for live play; demo playback feeds `keys` directly
-        // and must never see local inputs.
-        let (touch, tilt) = if self.state == Screen::Demo {
-            (TouchHeld::default(), (false, false))
+        // and must never see local inputs. The stick heading SNAPS
+        // (touch_input.rs) rather than chasing with rotate keys.
+        let touch = if self.state == Screen::Demo {
+            TouchHeld::default()
         } else {
-            (self.touch, self.tilt_rotate())
+            self.apply_tilt_heading();
+            self.touch
         };
         self.ship.set_inputs(ShipInputs {
-            left: self.keys.left || tilt.0,
-            right: self.keys.right || tilt.1,
+            left: self.keys.left,
+            right: self.keys.right,
             thrust: self.keys.thrust || touch.thrust,
             shield: self.keys.shield || touch.shield,
             fire: self.keys.fire || touch.fire,
@@ -541,6 +533,10 @@ impl Game {
         // the same audible outcome (the pending slot replaces).
         let hp_before = self.ship.sprite.hp;
 
+        // A won level means an untouchable pilot (modern): nothing
+        // may kill the ship while the iris closes and the tally runs.
+        let ship_immune = self.state == Screen::Intermission;
+
         // PlayersCollideObject order: Rocks, Gloops, SpikeBalls, HKs,
         // Bombers, FastDeaths, then Goodies.
         {
@@ -552,6 +548,7 @@ impl Game {
                 goodies: &mut self.goodies,
                 stats: &mut self.stats,
                 clip,
+                ship_immune,
             };
             if collide::player_vs_rocks(&mut self.ship, &mut self.rocks, &mut ctx) {
                 self.local_player_dead = true;
@@ -609,6 +606,7 @@ impl Game {
                 goodies: &mut self.goodies,
                 stats: &mut self.stats,
                 clip,
+                ship_immune,
             };
             speaker::speaker_vs_world(
                 &self.speaker,
@@ -645,6 +643,9 @@ impl Game {
                 self.state = Screen::GameOver;
             } else if !self.need_add_player {
                 self.need_add_player = true;
+                // Fire-mashing players die holding the button —
+                // lock the continue out for a beat of breath.
+                self.respawn_delay = RESPAWN_DELAY;
             }
         }
 

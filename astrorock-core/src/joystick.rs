@@ -17,6 +17,11 @@ pub const MAX_TILT_DEG: f64 = 24.0;
 /// Degrees of lean (from the calibrated rest plane) before steering
 /// engages — mirrored by the thin inner ring.
 pub const DEAD_ZONE_DEG: f64 = 8.0;
+/// Fraction of full deflection where thrust kicks in. With the
+/// heading snapping instantly, aiming happens near the center — so
+/// thrust can start well before the rim without accidental burns
+/// (tuned by feel: 0.95 read as "a bit too far").
+pub const THRUST_FRAC: f64 = 0.8;
 
 /// Outer ring center radius as a fraction of the half-size.
 const RING_R: f64 = 0.86;

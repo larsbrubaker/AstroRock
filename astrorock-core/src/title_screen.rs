@@ -228,7 +228,7 @@ impl Widget for TitleScreen {
                             y / crate::joystick::MAX_TILT_DEG,
                         ),
                         thumb.is_some() || mag >= crate::joystick::DEAD_ZONE_DEG,
-                        mag >= crate::joystick::MAX_TILT_DEG * 0.95,
+                        mag >= crate::joystick::MAX_TILT_DEG * crate::joystick::THRUST_FRAC,
                     )
                 }
                 None => ((0.0, 0.0), false, false),

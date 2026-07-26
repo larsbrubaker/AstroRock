@@ -48,26 +48,15 @@ impl Game {
         });
     }
 
-    /// The rotate keys the tilt target implies this beat: turn toward
-    /// the target the short way at normal key speed; stop inside half
-    /// a frame so the heading doesn't oscillate.
-    pub(crate) fn tilt_rotate(&self) -> (bool, bool) {
-        let Some(target) = self.tilt_target else {
-            return (false, false);
-        };
-        let mut diff = target - self.ship.sprite.cur_frame;
-        while diff > 16.0 {
-            diff -= 32.0;
-        }
-        while diff < -16.0 {
-            diff += 32.0;
-        }
-        if diff > 0.5 {
-            (false, true)
-        } else if diff < -0.5 {
-            (true, false)
-        } else {
-            (false, false)
+    /// Apply the tilt/joystick heading: the ship SNAPS to the stick
+    /// direction (instant, by request — incremental chase felt
+    /// confusing in play). Rounded to a whole rotation frame so the
+    /// sprite and the shot direction agree.
+    pub(crate) fn apply_tilt_heading(&mut self) {
+        if let Some(target) = self.tilt_target {
+            if self.ship.sprite.visible {
+                self.ship.sprite.cur_frame = target.round() % 32.0;
+            }
         }
     }
 }
@@ -77,33 +66,34 @@ mod tests {
     use super::*;
 
     #[test]
-    fn tilt_steers_toward_the_lean_at_key_speed() {
+    fn tilt_snaps_the_heading_instantly() {
         let mut g = Game::new(None);
+        g.ship.sprite.visible = true;
         g.ship.sprite.cur_frame = 0.0; // pointing up
 
-        // Lean hard right: target frame 8 (east) — rotate right.
+        // Lean hard right: heading snaps straight to east (frame 8).
         g.set_tilt(Some((30.0, 0.0)));
-        assert_eq!(g.tilt_rotate(), (false, true));
+        g.apply_tilt_heading();
+        assert_eq!(g.ship.sprite.cur_frame, 8.0);
 
-        // Lean hard left: target 24 (west) — the short way is left.
+        // Lean hard left: snaps to west (24) in ONE beat, no chase.
         g.set_tilt(Some((-30.0, 0.0)));
-        assert_eq!(g.tilt_rotate(), (true, false));
+        g.apply_tilt_heading();
+        assert_eq!(g.ship.sprite.cur_frame, 24.0);
 
-        // Already on target: no keys — no oscillation.
-        g.ship.sprite.cur_frame = 8.0;
-        g.set_tilt(Some((30.0, 0.0)));
-        assert_eq!(g.tilt_rotate(), (false, false));
-
-        // Wrap: from frame 30, east (8) is 10 steps right, not 22
-        // left.
-        g.ship.sprite.cur_frame = 30.0;
-        assert_eq!(g.tilt_rotate(), (false, true));
-
-        // Inside the dead zone: no target at all.
+        // Inside the dead zone: heading holds.
         g.set_tilt(Some((2.0, 3.0)));
-        assert_eq!(g.tilt_rotate(), (false, false));
+        g.apply_tilt_heading();
+        assert_eq!(g.ship.sprite.cur_frame, 24.0);
         g.set_tilt(None);
-        assert_eq!(g.tilt_rotate(), (false, false));
+        g.apply_tilt_heading();
+        assert_eq!(g.ship.sprite.cur_frame, 24.0);
+
+        // An invisible (dead) ship never snaps.
+        g.ship.sprite.visible = false;
+        g.set_tilt(Some((30.0, 0.0)));
+        g.apply_tilt_heading();
+        assert_eq!(g.ship.sprite.cur_frame, 24.0);
     }
 
     #[test]

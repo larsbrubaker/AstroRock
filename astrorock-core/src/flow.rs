@@ -12,6 +12,25 @@ use crate::pship::PlayerShip;
 use crate::rect::Rect;
 
 impl Game {
+    /// `AddPlayer` — materialize the ship WHERE IT ALREADY IS: the
+    /// death spot, or the level's pre-rolled spawn point. No new
+    /// position roll — the camera has been parked on the spot the
+    /// whole time, so the player can wait for a safe moment.
+    /// `NewShip` (stat reset) and the one-liner fire only when
+    /// actually dead: surviving a level carries HP and every power-up
+    /// across, exactly like `AddPlayer`'s `LocalPlayerIsDead` gate.
+    pub(crate) fn respawn(&mut self) {
+        if self.local_player_dead {
+            self.events.push(GameEvent::VoiceNewShip);
+            self.ship.new_ship();
+            self.local_player_dead = false;
+        }
+        self.ship.sprite.cur_frame = 0.0;
+        self.ship.sprite.x_delta = 0.0;
+        self.ship.sprite.y_delta = 0.0;
+        self.ship.sprite.visible = true;
+    }
+
     /// `STATE_GAMEOVER` exit: back to the start screen.
     pub(crate) fn game_over_to_menu(&mut self) {
         self.level = 0;
@@ -135,8 +154,13 @@ impl Game {
             self.state = Screen::Intermission;
         }
 
-        // `NeedToAddLocalPlayer` + `PressedContinue` -> `AddPlayer`.
-        if self.need_add_player && self.enter_pressed {
+        // `NeedToAddLocalPlayer` + `PressedContinue` -> `AddPlayer`,
+        // gated by the post-death lockout (modern): a press during
+        // the delay is ignored, not queued — the player must choose
+        // the moment once they can see the field again.
+        if self.respawn_delay > 0 {
+            self.respawn_delay -= 1;
+        } else if self.need_add_player && self.enter_pressed {
             self.respawn();
             self.need_add_player = false;
         }
@@ -315,6 +339,24 @@ mod tests {
         assert_eq!(g.stats.survival, 0);
         assert_eq!(g.stats.lives_lost, 1);
 
+        // The post-death lockout (modern): a player mashing fire dies
+        // holding the button — presses during the delay are ignored,
+        // not queued, so they can't bounce straight back onto the
+        // rock that killed them.
+        g.ship.sprite.x_pos = 10.0;
+        g.ship.sprite.y_pos = 10.0;
+        g.set_key(&Key::Enter, true);
+        now = step(&mut g, now, 1);
+        g.set_key(&Key::Enter, false);
+        assert!(
+            !g.ship.sprite.visible,
+            "respawn must wait out the death lockout"
+        );
+        for _ in 0..crate::game::RESPAWN_DELAY {
+            now = step(&mut g, now, 1);
+        }
+        assert!(!g.ship.sprite.visible, "ignored presses don't queue");
+
         // The dead ship keeps its position (`AddPlayer` never moves
         // it) — the killer rock is still parked there, so respawning
         // blind would die again. Drag the wreck somewhere quiet first,
@@ -349,6 +391,30 @@ mod tests {
         assert!(g.state == Screen::Menu);
         assert!(!g.menu.from_game, "back on the main page");
         assert!(g.menu.enter_starts(), "Enter can start a fresh game");
+    }
+
+    /// A won level means an untouchable pilot (modern): parking the
+    /// ship inside a rock through the whole iris must not kill it.
+    #[test]
+    fn ship_is_indestructible_during_the_intermission() {
+        let mut g = Game::new(None);
+        let mut now = start_and_spawn(&mut g);
+        g.inter.begin(&mut g.stats, 0);
+        g.state = Screen::Intermission;
+        let ships_before = g.ship.num_ships;
+
+        // Ride the iris out (stop before NewLevel hides the ship for
+        // the spawn gate), parked inside a rock the whole way.
+        while g.inter.close_level > 1 {
+            if let Some(idx) = g.rocks.big().iter().position(|s| s.visible) {
+                g.ship.sprite.x_pos = g.rocks.big()[idx].x_pos;
+                g.ship.sprite.y_pos = g.rocks.big()[idx].y_pos;
+            }
+            now = step(&mut g, now, 1);
+            assert!(g.ship.sprite.visible, "ship must survive the iris");
+        }
+        assert_eq!(g.ship.num_ships, ships_before);
+        assert_eq!(g.stats.lives_lost, 0);
     }
 
     #[test]
