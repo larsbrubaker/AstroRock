@@ -110,6 +110,8 @@ pub struct Game {
     /// `ResetMusicFrequencyDelay` + whether the slowdown engaged.
     music_freq_delay: i32,
     music_slow: bool,
+    /// The rate actually sent to the sink (ramps back up on release).
+    music_rate: f32,
     pub(crate) audio: Option<Box<dyn AudioSink>>,
     /// Chrome-bar toggles.
     pub music_on: bool,
@@ -191,6 +193,7 @@ impl Game {
             sfx_on: true,
             music_freq_delay: 0,
             music_slow: false,
+            music_rate: 1.0,
         }
     }
 
@@ -520,7 +523,18 @@ impl Game {
             // The original starts the music stream at init and restarts
             // it from the main loop forever — attract mode included.
             sink.set_music(self.music_on);
-            sink.set_music_slow(self.music_slow);
+            // The record grab is instant; the recovery spins back up.
+            let target = if self.music_slow {
+                audio::MUSIC_SLOW_RATE
+            } else {
+                1.0
+            };
+            if target < self.music_rate {
+                self.music_rate = target;
+            } else if self.music_rate < target {
+                self.music_rate = (self.music_rate + audio::MUSIC_RAMP_STEP).min(target);
+            }
+            sink.set_music_rate(self.music_rate);
         } else {
             for _ in self.events.drain() {}
         }

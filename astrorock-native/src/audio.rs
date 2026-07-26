@@ -10,7 +10,7 @@ use std::collections::HashMap;
 use std::io::Cursor;
 use std::path::PathBuf;
 
-use astrorock_core::audio::{AudioSink, LoopKind, SfxId, MUSIC_SLOW_RATE, MUSIC_TRACKS};
+use astrorock_core::audio::{AudioSink, LoopKind, SfxId, MUSIC_TRACKS};
 use rodio::source::{Buffered, Source};
 use rodio::{Decoder, OutputStream, OutputStreamHandle, Sink};
 
@@ -42,8 +42,8 @@ pub struct RodioAudio {
     music_dir: MusicDir,
     /// Next index into [`MUSIC_TRACKS`].
     music_track: usize,
-    /// The speaker-gag slowdown state (`SkipMusic`).
-    music_slow: bool,
+    /// Last applied playback rate (the speaker-gag slowdown).
+    music_rate: f32,
 }
 
 impl RodioAudio {
@@ -100,7 +100,7 @@ impl RodioAudio {
             music: None,
             music_dir: MusicDir::Unprobed,
             music_track: 0,
-            music_slow: false,
+            music_rate: 1.0,
         })
     }
 
@@ -167,11 +167,7 @@ impl AudioSink for RodioAudio {
             self.music = Sink::try_new(&self.handle).ok();
             if let Some(sink) = &self.music {
                 sink.set_volume(MUSIC_VOLUME);
-                sink.set_speed(if self.music_slow {
-                    MUSIC_SLOW_RATE
-                } else {
-                    1.0
-                });
+                sink.set_speed(self.music_rate);
             }
         }
         let Some(sink) = self.music.as_ref() else {
@@ -211,15 +207,15 @@ impl AudioSink for RodioAudio {
         sink.play();
     }
 
-    fn set_music_slow(&mut self, slow: bool) {
-        if slow == self.music_slow {
+    fn set_music_rate(&mut self, rate: f32) {
+        if rate == self.music_rate {
             return;
         }
-        self.music_slow = slow;
+        self.music_rate = rate;
         if let Some(sink) = &self.music {
             // `CStreamSoundSetFrequency`: rate change drops pitch and
             // tempo together — the record-slowdown gag.
-            sink.set_speed(if slow { MUSIC_SLOW_RATE } else { 1.0 });
+            sink.set_speed(rate);
         }
     }
 }

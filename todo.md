@@ -67,6 +67,16 @@ work. If this file ever describes finished work, that's a bug. Use
 - Gamma/fade options, windowed/fullscreen toggle.
 - Pages deploy verified on desktop + phone; README hero screenshot.
 
+## Tuning (after Phase 9 proves the baseline — deliberate departures)
+
+- Early-level rock speed: feels fast vs memory; velocity math is
+  verified faithful, so any change is a modernization knob, decided
+  once demos replay bit-exact.
+- Rock splits: children currently get fully random velocity exactly
+  like the C++ (`NetRandAbout0`, no parent term) — Lars wants them to
+  inherit some parent momentum. Add as a tunable after the demo suite
+  locks the faithful baseline (a toggle keeps replays valid).
+
 ## Deferred (not scheduled)
 
 - Multiplayer: DirectPlay replaced by a modern transport. The
