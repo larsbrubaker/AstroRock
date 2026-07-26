@@ -2,13 +2,15 @@
 //! an RGBA PNG for visual inspection.
 //!
 //! ```text
-//! cargo run -p astrorock-core --example dump_frame -- out.png [beats]
+//! cargo run -p astrorock-core --example dump_frame -- out.png [beats] [esc]
 //! ```
 //!
 //! The optional second argument advances the simulation that many
 //! 30 Hz beats first (e.g. to catch the menu's showcase monitor
-//! mid-animation).
+//! mid-animation). A third argument of `esc` starts a game and hits
+//! Escape before those beats — dumping the from-game options page.
 
+use agg_gui::event::Key;
 use astrorock_core::game::Game;
 
 fn main() {
@@ -19,10 +21,21 @@ fn main() {
         .nth(2)
         .and_then(|s| s.parse().ok())
         .unwrap_or(0);
+    let esc = std::env::args().nth(3).is_some_and(|s| s == "esc");
 
     let mut game = Game::new(None);
-    for beat in 0..beats {
-        game.advance(beat * 1000 / 30 + 34);
+    let mut now = 0;
+    if esc {
+        game.set_key(&Key::Enter, true);
+        now = 40;
+        game.advance(now);
+        game.set_key(&Key::Enter, false);
+        game.set_key(&Key::Escape, true);
+        game.set_key(&Key::Escape, false);
+    }
+    for _ in 0..beats {
+        now += 34;
+        game.advance(now);
     }
     game.compose();
     let mut rgba = Vec::new();

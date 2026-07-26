@@ -234,13 +234,13 @@ impl Button {
         }
     }
 
-    fn contains(&self, x: i32, y: i32) -> bool {
-        x >= self.x && x < self.x + self.up.width && y >= self.y && y < self.y + self.up.height
+    fn contains_at(&self, at: (i32, i32), x: i32, y: i32) -> bool {
+        x >= at.0 && x < at.0 + self.up.width && y >= at.1 && y < at.1 + self.up.height
     }
 
-    fn draw(&self, screen: &mut Frame, pressed: bool) {
+    fn draw_at(&self, screen: &mut Frame, at: (i32, i32), pressed: bool) {
         let art = if pressed { &self.down } else { &self.up };
-        screen.blit(art, &art.bounds(), self.x, self.y, BlitMode::Transparent0);
+        screen.blit(art, &art.bounds(), at.0, at.1, BlitMode::Transparent0);
     }
 }
 
@@ -370,14 +370,17 @@ impl Menu {
         self.cursor = (x, y);
         self.pressed = self.page_buttons().iter().find_map(|&id| {
             let b = self.button(id);
-            b.contains(x, y).then_some(id)
+            b.contains_at(self.button_pos(id), x, y).then_some(id)
         });
     }
 
     pub fn on_mouse_up(&mut self, x: i32, y: i32, events: &mut Events) -> Option<MenuAction> {
         self.cursor = (x, y);
         let pressed = self.pressed.take()?;
-        if !self.button(pressed).contains(x, y) {
+        if !self
+            .button(pressed)
+            .contains_at(self.button_pos(pressed), x, y)
+        {
             return None; // released elsewhere — no fire (ButtonCheck)
         }
         events.push(GameEvent::SfxClicked);
@@ -463,6 +466,22 @@ impl Menu {
         self.buttons.iter().find(|b| b.id == id).expect("button")
     }
 
+    /// Where a button sits on the CURRENT page. The 1997 coordinates
+    /// are the default; the from-game config page (which has no 1997
+    /// counterpart) rearranges its bottom row so Quit doesn't overlap
+    /// Done — side by side in the main page's two columns.
+    fn button_pos(&self, id: ButtonId) -> (i32, i32) {
+        if self.from_game && self.page == Page::Config {
+            match id {
+                ButtonId::Done => return (136, 370),
+                ButtonId::Quit => return (344, 370),
+                _ => {}
+            }
+        }
+        let b = self.button(id);
+        (b.x, b.y)
+    }
+
     /// Draw the whole page into the 640x480 screen. `fades` is the
     /// game-palette `FadeBlit` table — the original built it once at
     /// init and the start screen used it as-is.
@@ -534,8 +553,9 @@ impl Menu {
         let (cx, cy) = self.cursor;
         for &id in self.page_buttons() {
             let b = self.button(id);
-            let down = self.pressed == Some(id) && b.contains(cx, cy);
-            b.draw(screen, down);
+            let at = self.button_pos(id);
+            let down = self.pressed == Some(id) && b.contains_at(at, cx, cy);
+            b.draw_at(screen, at, down);
         }
     }
 }
@@ -638,11 +658,18 @@ mod tests {
         let mut menu = Menu::new();
         let mut ev = Events::new();
         menu.show_options_from_game();
-        // The from-game config page grows the Quit button (344, 352).
+        // The from-game config page grows a Quit button, rearranged
+        // beside Done so the two 162-wide arts can't overlap.
         assert!(menu.page_buttons().contains(&ButtonId::Quit));
+        let done = menu.button_pos(ButtonId::Done);
+        let quit = menu.button_pos(ButtonId::Quit);
+        assert!(
+            done.0 + 162 <= quit.0 || quit.0 + 162 <= done.0 || (done.1 - quit.1).abs() >= 25,
+            "Done {done:?} and Quit {quit:?} overlap"
+        );
 
-        menu.on_mouse_down(350, 358);
-        assert_eq!(menu.on_mouse_up(350, 358, &mut ev), None);
+        menu.on_mouse_down(quit.0 + 5, quit.1 + 5);
+        assert_eq!(menu.on_mouse_up(quit.0 + 5, quit.1 + 5, &mut ev), None);
         assert_eq!(menu.page, Page::ReallyQuit);
 
         // No resumes play; Yes abandons the game to GAME OVER.
