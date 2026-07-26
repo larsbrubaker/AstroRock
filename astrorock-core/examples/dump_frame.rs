@@ -45,6 +45,12 @@ fn main() {
             click(&mut game, 250, 330); // Config Sound (245, 324)
         }
     }
+    if mode == "help" {
+        click(&mut game, 350, 320); // Help (344, 312)
+    }
+    if mode == "high" {
+        click(&mut game, 140, 320); // View High Scores (136, 312)
+    }
     for _ in 0..beats {
         now += 34;
         game.advance(now);

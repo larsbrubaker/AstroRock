@@ -31,11 +31,17 @@ impl Game {
         self.ship.sprite.visible = true;
     }
 
-    /// `STATE_GAMEOVER` exit: back to the start screen.
+    /// `STATE_GAMEOVER` exit: back to the start screen — through the
+    /// name-entry page when the run made the high-score table.
     pub(crate) fn game_over_to_menu(&mut self) {
+        let score = self.ship.score;
         self.level = 0;
         self.reset_level();
-        self.menu.show_main();
+        if score > 0 && self.menu.high_score_rank(score).is_some() {
+            self.menu.start_high_score_entry(score);
+        } else {
+            self.menu.show_main();
+        }
         self.state = Screen::Menu;
     }
 

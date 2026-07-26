@@ -40,7 +40,7 @@ use crate::radar::Radar;
 use crate::rand::Rand;
 use crate::rect::Rect;
 use crate::rocks::Rocks;
-use crate::settings::{Settings, SettingsStore};
+use crate::settings::SettingsStore;
 use crate::spawnfx::{CompletedSpawn, SpawnFx, SpawnKind};
 use crate::speaker::{self, Speaker};
 use crate::spikeballs::SpikeBalls;
@@ -140,7 +140,7 @@ pub struct Game {
     /// LocalRand/NetRand draw counts at `START_ONEPLAYER`.
     pub(crate) crt_seed: u32,
     /// The modern `Astro.cfg` (file on native, localStorage on wasm).
-    settings_store: Option<Box<dyn SettingsStore>>,
+    pub(crate) settings_store: Option<Box<dyn SettingsStore>>,
     /// Mobile virtual-gamepad buttons currently held (OR'd into the
     /// keyboard state while Playing) — see touch_input.rs.
     pub touch: TouchHeld,
@@ -249,45 +249,8 @@ impl Game {
         }
     }
 
-    /// Attach the platform's settings store and apply what it holds
-    /// (`LoadConfig` at startup; absent/corrupt data keeps defaults).
-    pub fn set_settings_store(&mut self, store: Box<dyn SettingsStore>) {
-        if let Some(s) = store.load().as_deref().and_then(Settings::from_json) {
-            self.menu.bindings = s.bindings();
-            self.menu.start_level = s.start_level.min(crate::menu::MAX_START_LEVEL);
-            self.menu.master_volume = s.master_volume.clamp(0.0, 1.0);
-            self.menu.music_volume = s.music_volume.clamp(0.0, 1.0);
-            self.music_on = s.music_on;
-            self.sfx_on = s.sfx_on;
-        }
-        self.settings_store = Some(store);
-    }
-
-    /// `SaveConfig` — write the current state through the store.
-    fn save_settings(&mut self) {
-        let Some(store) = self.settings_store.as_deref() else {
-            return;
-        };
-        let mut s = Settings::default();
-        s.set_bindings(&self.menu.bindings);
-        s.start_level = self.menu.start_level;
-        s.master_volume = self.menu.master_volume;
-        s.music_volume = self.menu.music_volume;
-        s.music_on = self.music_on;
-        s.sfx_on = self.sfx_on;
-        store.save(&s.to_json());
-    }
-
-    /// Chrome-bar toggles — persisted like every other setting.
-    pub fn toggle_music(&mut self) {
-        self.music_on = !self.music_on;
-        self.save_settings();
-    }
-
-    pub fn toggle_sfx(&mut self) {
-        self.sfx_on = !self.sfx_on;
-        self.save_settings();
-    }
+    // `set_settings_store`/`save_settings` (`LoadConfig`/`SaveConfig`)
+    // and the chrome toggles live in settings.rs.
 
     /// Milliseconds since construction — the widget's paint clock.
     pub fn now_ms(&self) -> u64 {
@@ -742,10 +705,21 @@ impl Game {
             }
             return true;
         }
-        // `STATE_GETAKEY`: the config screen's capture eats the next
-        // press before the bindings see it.
-        if self.state == Screen::Menu && down && self.menu.capture_key(key, &mut self.events) {
-            return true;
+        // Menu-page key eaters run before the bindings see anything:
+        // `STATE_GETAKEY` capture, high-score name typing, and the
+        // help pages' arrow paging.
+        if self.state == Screen::Menu && down {
+            if self.menu.capture_key(key, &mut self.events)
+                || self.menu.high_score_key(key, &mut self.events)
+            {
+                return true;
+            }
+            if self.menu.page == crate::menu::Page::Help
+                && matches!(key, Key::ArrowLeft | Key::ArrowRight)
+            {
+                self.menu.help_arrow(*key == Key::ArrowRight);
+                return true;
+            }
         }
         match self.menu.bindings.lookup(key) {
             Some(Binding::Left) => self.keys.left = down,
