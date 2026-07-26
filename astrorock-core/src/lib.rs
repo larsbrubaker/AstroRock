@@ -23,6 +23,7 @@ pub mod events;
 pub mod explosion;
 pub mod fastdeaths;
 pub mod fixed_trig;
+pub mod flow;
 pub mod font;
 pub mod frame;
 pub mod game;

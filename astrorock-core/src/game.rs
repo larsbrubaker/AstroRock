@@ -22,7 +22,7 @@ use crate::assets;
 use crate::audio::{self, AudioSink, LoopKind};
 use crate::bombers::Bombers;
 use crate::collide::{self, CollideCtx};
-use crate::events::{Events, GameEvent};
+use crate::events::Events;
 use crate::explosion::Explosions;
 use crate::fastdeaths::FastDeaths;
 use crate::frame::Frame;
@@ -210,7 +210,7 @@ impl Game {
 
     /// The live enemy count (`NumBadGuys`) — rocks deliberately not
     /// included; leftover rocks only cost the annihilation bonus.
-    fn enemies_alive(&self) -> u32 {
+    pub(crate) fn enemies_alive(&self) -> u32 {
         self.gloops.num_gloops
             + self.hks.num_hks
             + self.bombers.num_bombers
@@ -233,9 +233,8 @@ impl Game {
 
     /// `NewLevel` — reset the world, then wait for Enter to spawn
     /// (`NeedToAddLocalPlayer`).
-    fn new_level(&mut self) {
+    pub(crate) fn new_level(&mut self) {
         self.reset_level();
-        self.ship.sprite.visible = false;
         self.need_add_player = true;
         // `NeedNumBadGuys`: the tally's "Bad Guys Killed" is the count
         // present at level start.
@@ -243,10 +242,33 @@ impl Game {
     }
 
     /// `ResetAll` in the original's exact call order — the RNG draw
-    /// order is part of the determinism contract: Rocks, Gloops,
-    /// SpikeBalls, HKs, Bombers, FastDeaths, Goodies, Explosions,
-    /// then the speaker's random position.
+    /// order is part of the determinism contract: players first ("so
+    /// no one finds them as targets"), then Rocks, Gloops, SpikeBalls,
+    /// HKs, Bombers, FastDeaths, Goodies, Explosions, and the
+    /// speaker's random position.
     fn reset_level(&mut self) {
+        // `PlayersResetAll`: every one of the 8 player slots gets
+        // `SetVisAndMove` — two NetRand draws each, occupied or not —
+        // then its shots/bombs clear and it goes invisible. HP
+        // survives the level change; the pre-rolled position is where
+        // Enter will materialize the ship (the camera parks there, so
+        // the player times the spawn).
+        for slot in 0..8 {
+            let x = self.net_rand.rand(WORLD_W as u32) as f32;
+            let y = self.net_rand.rand(WORLD_H as u32) as f32;
+            if slot == 0 {
+                let hp = self.ship.sprite.hp;
+                self.ship.sprite.reset();
+                self.ship.sprite.x_pos = x;
+                self.ship.sprite.y_pos = y;
+                self.ship.sprite.hp = hp;
+                let cur = self.ship.cur_shots;
+                self.ship.shots[cur].reset();
+                self.ship.bombs.reset();
+                self.ship.sprite.visible = false;
+            }
+        }
+
         self.rocks.reset(self.level, &mut self.net_rand);
         self.gloops.reset(self.level, &mut self.net_rand);
         self.spikeballs.reset(self.level, &mut self.net_rand);
@@ -260,11 +282,15 @@ impl Game {
             .reset(WORLD_W as u32, WORLD_H as u32, &mut self.net_rand);
     }
 
-    /// Respawn after death, lives permitting (Enter while dead).
-    fn respawn(&mut self) {
+    /// `AddPlayer` — materialize the ship WHERE IT ALREADY IS: the
+    /// death spot, or the level's pre-rolled spawn point. No new
+    /// position roll — the camera has been parked on the spot the
+    /// whole time, so the player can wait for a safe moment.
+    pub(crate) fn respawn(&mut self) {
         self.ship.new_ship();
-        self.ship.sprite.x_pos = self.net_rand.rand(WORLD_W as u32) as f32;
-        self.ship.sprite.y_pos = self.net_rand.rand(WORLD_H as u32) as f32;
+        self.ship.sprite.cur_frame = 0.0;
+        self.ship.sprite.x_delta = 0.0;
+        self.ship.sprite.y_delta = 0.0;
         self.ship.sprite.visible = true;
         self.local_player_dead = false;
     }
@@ -311,7 +337,7 @@ impl Game {
 
     /// One beat of `UpdateAll` — runs while Playing, during the
     /// intermission iris, and under the GAME OVER overlay.
-    fn sim_beat(&mut self, clip: Rect) {
+    pub(crate) fn sim_beat(&mut self, clip: Rect) {
         self.ship.set_inputs(ShipInputs {
             left: self.keys.left,
             right: self.keys.right,
@@ -500,72 +526,6 @@ impl Game {
         }
     }
 
-    /// The `STATE_PLAYING` arm: spawn gate, level end, death.
-    fn playing_transitions(&mut self) {
-        // `NeedToAddLocalPlayer` + `PressedContinue` -> `AddPlayer`.
-        if self.need_add_player && self.enter_pressed {
-            self.respawn();
-            self.need_add_player = false;
-        }
-
-        // `NumBadGuys == 0` -> `SetStateIntermission`. Rocks don't
-        // count — leftovers only zero the annihilation bonus.
-        if self.enemies_alive() == 0 {
-            let rocks_left = (self.rocks.num_big + self.rocks.num_med + self.rocks.num_lit) as i32;
-            self.inter.begin(&mut self.stats, rocks_left);
-            self.state = Screen::Intermission;
-        }
-
-        if self.local_player_dead {
-            self.local_player_dead = false;
-            if self.ship.num_ships == 0 {
-                self.world.set_on_screen_rect(self.on_screen());
-                self.game_over_pause = 0;
-                self.state = Screen::GameOver;
-            } else {
-                self.need_add_player = true;
-            }
-        }
-    }
-
-    /// The `STATE_INTERMISSION` arm: the iris (sim still running),
-    /// then the sliding tally counting the bonus into the score.
-    fn intermission_beat(&mut self, clip: Rect) {
-        let on_screen = self.on_screen();
-        if self.inter.close_level > 0 {
-            self.sim_beat(clip);
-            self.inter.close_level -= 1;
-            if self.inter.close_level > 0 {
-                let iris = self.inter.shrink_rect(&on_screen);
-                self.world.set_on_screen_rect(iris);
-            } else {
-                self.world.set_on_screen_rect(on_screen);
-                self.level += 1;
-                self.new_level();
-                self.inter
-                    .update_slide(on_screen.width(), on_screen.height());
-            }
-        } else if self.enter_pressed || self.inter.raising == 0 || self.inter.total_bonus == 0 {
-            // Skip or done: bank the remainder and play on
-            // (`ResetIntermisionInfo` on the way out).
-            self.ship.add_score(self.inter.total_bonus.max(0) as u32);
-            self.inter.total_bonus = 0;
-            self.stats.reset(self.level as u32);
-            self.stats.bad_guys_killed = self.enemies_alive() as i32;
-            self.state = Screen::Playing;
-        } else {
-            self.inter
-                .update_slide(on_screen.width(), on_screen.height());
-            let (add, blip) = self.inter.count_step();
-            if add > 0 {
-                self.ship.add_score(add);
-            }
-            if blip {
-                self.events.push(GameEvent::SfxBonus);
-            }
-        }
-    }
-
     /// The composed indexed back buffer (the widget's upload source,
     /// tests, and the `dump_frame` inspection example).
     pub fn screen(&self) -> &Frame {
@@ -722,11 +682,18 @@ mod tests {
         assert_eq!(g.stats.survival, 0);
         assert_eq!(g.stats.lives_lost, 1);
 
-        // Enter respawns with a fresh hull.
+        // The dead ship keeps its position (`AddPlayer` never moves
+        // it) — the killer rock is still parked there, so respawning
+        // blind would die again. Drag the wreck somewhere quiet first,
+        // like a player waiting for a safe moment.
+        g.ship.sprite.x_pos = 10.0;
+        g.ship.sprite.y_pos = 10.0;
         g.set_key(&Key::Enter, true);
-        step(&mut g, now, 2);
+        step(&mut g, now, 1);
         assert!(g.ship.sprite.visible);
         assert_eq!(g.ship.sprite.hp, 100);
+        // And it spawned exactly where it was left.
+        assert!(g.ship.sprite.x_pos < 30.0 && g.ship.sprite.y_pos < 30.0);
     }
 
     #[test]

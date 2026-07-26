@@ -55,6 +55,11 @@ work. If this file ever describes finished work, that's a bug. Use
   are older recordings from the Jan 1997 build and differ.
 - Headless replay harness: run the sim, assert every checksum, for all
   27 shipped demos, in `cargo test`.
+- Replay doubles as the difficulty audit: level-1 rocks feel fast to
+  Lars vs memory; the velocity math (`NetRandAbout0(8)+1` px/beat at
+  30 Hz) and cfg counts match the C++ line-for-line, so if demos
+  replay bit-exact the speed IS the 1997 speed — otherwise the
+  divergence they expose is the cause.
 - Attract mode (demo playback from the title screen).
 
 ## Phase 10 — Polish + ship
