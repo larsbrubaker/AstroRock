@@ -16,12 +16,16 @@ work. If this file ever describes finished work, that's a bug. Use
 
 - `players.cpp` remainder: `PlayersCollidePlayers` (deferred with
   net).
-- Exact `UpdateAll` call order pass — align update/collide sequence
-  with `AstroRock.cpp` line-for-line before demo replay (Phase 9
-  depends on it).
-- Pause (`STATE_PAUSE`, Pause key + pause.png overlay) and the Esc
-  quit-confirm (`STATE_REALLYENDGAME`, reallyq.png, Y/N) — small
-  states around the ported machine; land with Phase 8 menus.
+- Pause (`STATE_PAUSE`, Pause key + pause.png overlay, FastDeaths
+  freeze while paused) and the Esc quit-confirm
+  (`STATE_REALLYENDGAME`, reallyq.png, Y/N) — small states around
+  the ported machine; land with Phase 8 menus. Ctrl+S/Ctrl+M mute
+  keys covered by the chrome toggles until then.
+- Known replay nuance for Phase 9: the original's level-end check
+  reads `NumBadGuys` from the previous DRAW (render-paced); our
+  live per-beat count is equivalent whenever rendering kept up with
+  30 Hz (true on the dev machines that recorded the demos). If a
+  demo diverges at a level boundary, this is the first suspect.
 
 ## Phase 7 — Audio (remaining)
 

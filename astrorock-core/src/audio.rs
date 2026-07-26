@@ -282,8 +282,9 @@ pub trait AudioSink {
 
 /// `PausedSoundPlayer`: one pending voice slot with a countdown —
 /// a newer request replaces whatever was waiting, and playback stops
-/// the previous line. `update` runs once per audio pump (the
-/// original called `PausePlayerUpdate` per render-loop frame).
+/// the previous line. `take_due` ticks once per 30 Hz beat, exactly
+/// where the original called `PausePlayerUpdate` (top of the
+/// per-update loop).
 #[derive(Default)]
 pub struct VoicePlayer {
     pending: Option<SfxId>,
@@ -301,21 +302,22 @@ impl VoicePlayer {
         self.pause = pause;
     }
 
-    /// `PausePlayerUpdate`.
-    pub fn update(&mut self, sink: &mut dyn AudioSink) {
-        if let Some(sfx) = self.pending {
-            if self.pause > 0 {
-                self.pause -= 1;
-                if self.pause == 0 {
-                    sink.play_voice(sfx);
-                    self.pending = None;
-                }
+    /// `PausePlayerUpdate` — count the pending line down; returns it
+    /// on the beat it comes due (the caller hands it to the sink).
+    pub fn take_due(&mut self) -> Option<SfxId> {
+        let sfx = self.pending?;
+        if self.pause > 0 {
+            self.pause -= 1;
+            if self.pause == 0 {
+                self.pending = None;
+                return Some(sfx);
             }
         }
+        None
     }
 }
 
-/// Voice delays, in pump ticks (`PLAYHURTPAUSE`, `PLAYCARNAGEPAUSE`,
+/// Voice delays, in 30 Hz beats (`PLAYHURTPAUSE`, `PLAYCARNAGEPAUSE`,
 /// the KillPlayer/AddPlayer/GetGoody literals).
 pub const HURT_PAUSE: u32 = 45;
 pub const CARNAGE_PAUSE: u32 = 30;
@@ -453,9 +455,11 @@ mod tests {
                 kind: GoodyKind::Rapid,
             });
             dispatch(&mut ev, &mut rec, &mut lr, &mut vp);
-            // Flush the paused voice slot (5-tick delay).
+            // Flush the paused voice slot (5-beat delay).
             for _ in 0..GOODY_VOICE_PAUSE {
-                vp.update(&mut rec);
+                if let Some(sfx) = vp.take_due() {
+                    rec.play_voice(sfx);
+                }
             }
         }
         let jingles = rec.plays.iter().filter(|(s, _)| *s == SfxId::Goody).count();
@@ -470,19 +474,15 @@ mod tests {
 
     #[test]
     fn voice_player_delays_and_replaces() {
-        let mut rec = Recorder::default();
         let mut vp = VoicePlayer::new();
         vp.play(SfxId::VoiceOuch, 3);
-        vp.update(&mut rec);
-        vp.update(&mut rec);
-        assert!(rec.voices.is_empty(), "still counting down");
+        assert_eq!(vp.take_due(), None);
+        assert_eq!(vp.take_due(), None);
         // A newer line replaces the pending one ("don't play two").
         vp.play(SfxId::VoiceBumb, 2);
-        vp.update(&mut rec);
-        vp.update(&mut rec);
-        assert_eq!(rec.voices, vec![SfxId::VoiceBumb]);
-        vp.update(&mut rec);
-        assert_eq!(rec.voices.len(), 1, "slot cleared after playing");
+        assert_eq!(vp.take_due(), None);
+        assert_eq!(vp.take_due(), Some(SfxId::VoiceBumb));
+        assert_eq!(vp.take_due(), None, "slot cleared after playing");
     }
 
     #[test]
