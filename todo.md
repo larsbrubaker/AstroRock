@@ -76,33 +76,35 @@ harness (`tests/demo_replay.rs`, bless with ASTROROCK_BLESS_DEMOS=1).
 All 31 demos replay panic-free and deterministically; the current
 golden pins OUR determinism only.
 
-- ROOT CAUSE THE 1997 DESYNC: replays diverge from the recordings
-  within ~100 beats (demo00: our pilot dies <100 beats into a
-  1079-beat recording, score 0 — the recorded pilot survived to the
-  end by definition of the stop condition). RNG primitive verified
-  exact (count-then-early-out, warm-up counting). Bisect order:
-  (1) init draw-count audit per reset (players 16, rocks 7*MAXBIG+
-  5*visible, then gloops/spikeballs/hks/bombers/fastdeaths/goodies —
-  each vs its cpp SetVisAndMove/Reset), (2) per-beat update draw
-  audit in the same order, (3) sprite base Update (does CSprite::
-  Update draw? our port takes rand — verify against sprite.cpp),
-  (4) ship physics f32 shapes. A visual side-by-side with the
-  shipped exe (backup runs demos in attract) would bisect init vs
-  update instantly. `examples/demo_probe.rs` prints the timeline
-  and dumps frames.
-- THE INSTRUMENTED C++ REFERENCE (the root-cause tool): a headless
-  x86 `/arch:IA32` build of the original sim with Burgerlib stubbed
-  (~200-line surface: typedefs, KeyArray, LoadAResource fread-by-id
-  from the dump-rez payloads) and the five platform files
-  (HalWin95/SoundWin95/StreamSoundW95/ScreenDD/Ddwindow) replaced by
-  no-ops, driving the game's own demo loop and printing per-beat
-  sync + CheckPlayField. `astrorock-tools dump-rez` landed; the
-  build scaffold lives in the session scratchpad (`cppbuild/`) —
-  fold the stubs + build scripts into a local-only `cppref/` dir
-  once the trace runs (never commit copied game sources).
-  NOTE: the shipped-game backup `C:\Development\Backups\2097-05`
-  referenced in CLAUDE.md does NOT exist on this machine — no exe to
-  run side-by-side; the headless build is the only reference path.
+THE INSTRUMENTED C++ REFERENCE EXISTS AND RUNS (local-only, never
+committed): `C:\Development\AstroRock-headless\` holds the headless
+x86 `/arch:IA32 /fp:precise` build of the original sim (Burgerlib
+stubbed, five platform files no-op'd, demos served from the dump-rez
+payloads) plus a Rust per-beat probe. `build.ps1` reproduces it from
+the read-only reference; reruns are byte-identical. CRand cross-check
+is EXACT against rand.rs lock-ins. Notable: the reference's
+`CPlayerShip::Check/GetStateData/SetStateData` infinitely recurse
+(call themselves where `CSprite::` base calls were intended) — that
+code was unexecutable in 1997, so demos carry no checksums and the
+check-byte has no ground truth (rust = cpp + 36 mod 256, constant,
+from differing readings of the broken method; SYNC is the reliable
+signal). The shipped-game backup `C:\Development\Backups\2097-05`
+referenced in CLAUDE.md does NOT exist on this machine.
+
+- ROOT CAUSE, NARROWED: per-beat NetRand sync matches the C++
+  EXACTLY for long stretches (demo00: 353 beats, demo01: 147,
+  demo02: 88), then diverges at a discrete collision event — at
+  demo00 beat 353 the C++ kills a rock (speaker collision, +8 draws,
+  Explosions/Rocks checks jump) that Rust kills at beat 356. Update
+  order and RNG logic are right; the drift is collision TIMING from
+  float position/trig paths. Next: dump per-rock and speaker
+  positions/deltas around beats 340-356 on both sides (the traces
+  in AstroRock-headless are the baseline) and find the first f32
+  that differs; suspects are trig tables, wrap math, or an
+  expression shape in sprite movement.
+- Re-bless the golden after parity; wire the C++ trace diff into a
+  manual verification script (compare.ps1 exists in the headless
+  dir).
 - Re-bless the golden once 1997 parity is confirmed; the difficulty
   audit (rock speed) is settled by the same event.
 - Attract mode (demo playback from the title screen) — after parity.
