@@ -154,7 +154,8 @@ fn touch_button(ctx: &mut dyn DrawCtx, rect: &GuiRect, glyph: &str, held: bool, 
 /// Every rect the touch layout produces — pure geometry, unit-tested
 /// for non-overlap across orientations. Left column: the rotate
 /// pair `[L][R]` at the thumb. Right column, top to bottom: music +
-/// sfx mutes, fullscreen + Esc, then shield above the `[F][T]` row.
+/// sfx mutes, fullscreen + Esc, then shield above fire in the
+/// `[T][F]` row.
 pub(crate) struct TouchRects {
     pub game: (f64, f64, f64, f64),
     pub landscape: bool,
@@ -221,14 +222,15 @@ pub(crate) fn touch_rects(w: f64, h: f64) -> TouchRects {
     let left = GuiRect::new(lx0, PAD, pair, pair);
     let right = GuiRect::new(lx0 + pair + pair_gap, PAD, pair, pair);
 
-    // Right column: `[F][T]` row at the thumb, shield above fire;
-    // the small buttons (mutes on top, then fullscreen + Esc) anchor
-    // to the TOP of the zone so a firing thumb can't graze them.
+    // Right column: `[T][F]` row at the thumb (thrust inboard, fire
+    // outboard), shield above fire; the small buttons (mutes on top,
+    // then fullscreen + Esc) anchor to the TOP of the zone so a
+    // firing thumb can't graze them.
     let rcx = right_x + col_w / 2.0;
     let rx0 = rcx - pair - pair_gap / 2.0;
-    let fire = GuiRect::new(rx0, PAD, pair, pair);
-    let thrust = GuiRect::new(rx0 + pair + pair_gap, PAD, pair, pair);
-    let shield = GuiRect::new(rx0, PAD + pair + GAP, pair, pair);
+    let thrust = GuiRect::new(rx0, PAD, pair, pair);
+    let fire = GuiRect::new(rx0 + pair + pair_gap, PAD, pair, pair);
+    let shield = GuiRect::new(fire.x, PAD + pair + GAP, pair, pair);
     let row_mutes = zone_h - PAD - small;
     let row_fs = row_mutes - GAP - small;
     let music = GuiRect::new(rcx - small - 4.0, row_mutes, small, small);
