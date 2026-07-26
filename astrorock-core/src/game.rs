@@ -46,6 +46,7 @@ use crate::speaker::{self, Speaker};
 use crate::spikeballs::SpikeBalls;
 use crate::statbar::StatBar;
 use crate::thrust::Thrust;
+use crate::touch_input::TouchHeld;
 use crate::virtual_frame::VirtualFrame;
 
 /// `#define NUMSTARS 50`
@@ -140,6 +141,13 @@ pub struct Game {
     pub(crate) crt_seed: u32,
     /// The modern `Astro.cfg` (file on native, localStorage on wasm).
     settings_store: Option<Box<dyn SettingsStore>>,
+    /// Mobile virtual-gamepad buttons currently held (OR'd into the
+    /// keyboard state while Playing) — see touch_input.rs.
+    pub touch: TouchHeld,
+    /// Tilt steering: the rotation frame (0..32) the tilt vector
+    /// points at; the ship turns toward it at the normal key-rotate
+    /// speed. `None` inside the dead zone.
+    pub(crate) tilt_target: Option<f32>,
 }
 
 impl Game {
@@ -227,6 +235,8 @@ impl Game {
             last_demo: usize::MAX,
             crt_seed: 1,
             settings_store: None,
+            touch: TouchHeld::default(),
+            tilt_target: None,
         }
     }
 
@@ -460,12 +470,20 @@ impl Game {
     /// One beat of `UpdateAll` — runs while Playing, during the
     /// intermission iris, and under the GAME OVER overlay.
     pub(crate) fn sim_beat(&mut self, clip: Rect) {
+        // Touch buttons and tilt steering merge into the key state —
+        // but only for live play; demo playback feeds `keys` directly
+        // and must never see local inputs.
+        let (touch, tilt) = if self.state == Screen::Demo {
+            (TouchHeld::default(), (false, false))
+        } else {
+            (self.touch, self.tilt_rotate())
+        };
         self.ship.set_inputs(ShipInputs {
-            left: self.keys.left,
-            right: self.keys.right,
-            thrust: self.keys.thrust,
-            shield: self.keys.shield,
-            fire: self.keys.fire,
+            left: self.keys.left || tilt.0,
+            right: self.keys.right || tilt.1,
+            thrust: self.keys.thrust || touch.thrust,
+            shield: self.keys.shield || touch.shield,
+            fire: self.keys.fire || touch.fire,
             bomb: self.keys.bomb,
         });
 

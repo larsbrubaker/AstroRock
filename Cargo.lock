@@ -774,6 +774,7 @@ dependencies = [
  "agg-rust",
  "bytemuck",
  "console_error_panic_hook",
+ "js-sys",
  "pollster",
  "wasm-bindgen",
  "wasm-bindgen-futures",

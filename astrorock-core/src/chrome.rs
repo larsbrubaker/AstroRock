@@ -26,6 +26,27 @@ const FA_MUSIC: &str = "\u{f001}";
 const FA_VOLUME: &str = "\u{f028}";
 const FA_EXPAND: &str = "\u{f065}";
 const FA_COMPRESS: &str = "\u{f066}";
+const FA_SHIELD: &str = "\u{f132}";
+const FA_CROSSHAIRS: &str = "\u{f05b}";
+const FA_ROCKET: &str = "\u{f135}";
+const FA_BARS: &str = "\u{f0c9}";
+
+/// Touch-zone width on each side in mobile landscape — thumb-sized
+/// hold targets flanking the game.
+pub const TOUCH_W: f64 = 116.0;
+/// Bottom touch-zone height in mobile portrait.
+pub const TOUCH_BAR_H: f64 = 132.0;
+/// Touch button size (hold targets — bigger than the icon toggles).
+const TOUCH_BTN: f64 = 92.0;
+
+/// The mobile virtual-gamepad rects: shield under the left thumb,
+/// fire + thrust under the right, and the menu (Esc) tap target.
+pub struct TouchLayout {
+    pub shield_btn: GuiRect,
+    pub fire_btn: GuiRect,
+    pub thrust_btn: GuiRect,
+    pub menu_btn: GuiRect,
+}
 
 /// Where everything landed this frame, in widget coords (bottom-left
 /// origin, Y-up). Button rects are hit-tested on MouseDown.
@@ -35,6 +56,8 @@ pub struct ChromeLayout {
     pub music_btn: GuiRect,
     pub sfx_btn: GuiRect,
     pub fullscreen_btn: GuiRect,
+    /// Present only in mobile-touch mode.
+    pub touch: Option<TouchLayout>,
 }
 
 pub fn hit(r: &GuiRect, x: f64, y: f64) -> bool {
@@ -88,15 +111,164 @@ fn icon_button(ctx: &mut dyn DrawCtx, rect: &GuiRect, glyph: &str, on: bool, ico
     }
 }
 
+/// One big hold-target for the virtual gamepad: dark round-cornered
+/// plate, thick border, large glyph; the border lights while held.
+fn touch_button(ctx: &mut dyn DrawCtx, rect: &GuiRect, glyph: &str, held: bool, icons: &Arc<Font>) {
+    ctx.set_fill_color(if held {
+        Color::from_rgb8(52, 62, 84)
+    } else {
+        Color::from_rgb8(30, 35, 46)
+    });
+    ctx.begin_path();
+    ctx.rect(rect.x, rect.y, rect.width, rect.height);
+    ctx.fill();
+    let edge = if held {
+        Color::from_rgb8(140, 170, 230)
+    } else {
+        Color::from_rgb8(64, 72, 92)
+    };
+    ctx.set_fill_color(edge);
+    ctx.begin_path();
+    ctx.rect(rect.x, rect.y, rect.width, 2.0);
+    ctx.rect(rect.x, rect.y + rect.height - 2.0, rect.width, 2.0);
+    ctx.rect(rect.x, rect.y, 2.0, rect.height);
+    ctx.rect(rect.x + rect.width - 2.0, rect.y, 2.0, rect.height);
+    ctx.fill();
+    ctx.set_fill_color(Color::from_rgb8(190, 200, 220));
+    ctx.set_font(icons.clone());
+    ctx.set_font_size(34.0);
+    ctx.fill_text(
+        glyph,
+        rect.x + rect.width / 2.0 - 17.0,
+        rect.y + rect.height / 2.0 - 15.0,
+    );
+}
+
+/// The mobile-touch layout: virtual-gamepad zones flanking the game
+/// (landscape) or under it (portrait), plus the menu tap target and
+/// the usual icon toggles tucked into the leftover space.
+#[allow(clippy::too_many_arguments)]
+fn paint_touch(
+    ctx: &mut dyn DrawCtx,
+    w: f64,
+    h: f64,
+    music_on: bool,
+    sfx_on: bool,
+    held: (bool, bool, bool),
+    icons: &Arc<Font>,
+) -> ChromeLayout {
+    let panel_bg = Color::from_rgb8(24, 28, 36);
+    let edge = Color::from_rgb8(56, 63, 79);
+    let landscape = w >= h;
+    let (game_x, game_y, game_w, game_h) = if landscape {
+        (TOUCH_W, 0.0, (w - 2.0 * TOUCH_W).max(1.0), h)
+    } else {
+        (0.0, TOUCH_BAR_H, w, (h - TOUCH_BAR_H).max(1.0))
+    };
+
+    // Zone panels.
+    ctx.set_fill_color(panel_bg);
+    ctx.begin_path();
+    if landscape {
+        ctx.rect(0.0, 0.0, TOUCH_W, h);
+        ctx.rect(w - TOUCH_W, 0.0, TOUCH_W, h);
+    } else {
+        ctx.rect(0.0, 0.0, w, TOUCH_BAR_H);
+    }
+    ctx.fill();
+    ctx.set_fill_color(edge);
+    ctx.begin_path();
+    if landscape {
+        ctx.rect(TOUCH_W - 1.0, 0.0, 1.0, h);
+        ctx.rect(w - TOUCH_W, 0.0, 1.0, h);
+    } else {
+        ctx.rect(0.0, TOUCH_BAR_H - 1.0, w, 1.0);
+    }
+    ctx.fill();
+
+    // Aspect-fit the game into its zone.
+    let scale = (game_w / crate::game::SCREEN_W as f64).min(game_h / crate::game::SCREEN_H as f64);
+    let dw = crate::game::SCREEN_W as f64 * scale;
+    let dh = crate::game::SCREEN_H as f64 * scale;
+    let dx = game_x + (game_w - dw) * 0.5;
+    let dy = game_y + (game_h - dh) * 0.5;
+
+    let (shield_btn, fire_btn, thrust_btn, menu_btn, music_btn, sfx_btn, fullscreen_btn) =
+        if landscape {
+            let lx = (TOUCH_W - TOUCH_BTN) / 2.0;
+            let rx = w - TOUCH_W + lx;
+            (
+                // Shield low under the left thumb; fire low right,
+                // thrust stacked above it.
+                GuiRect::new(lx, 24.0, TOUCH_BTN, TOUCH_BTN),
+                GuiRect::new(rx, 24.0, TOUCH_BTN, TOUCH_BTN),
+                GuiRect::new(rx, 24.0 + TOUCH_BTN + 16.0, TOUCH_BTN, TOUCH_BTN),
+                // Menu (Esc) at the top-right; toggles top-left.
+                GuiRect::new(
+                    w - TOUCH_W + (TOUCH_W - BTN) / 2.0,
+                    h - 12.0 - BTN,
+                    BTN,
+                    BTN,
+                ),
+                GuiRect::new(8.0, h - 12.0 - BTN, BTN, BTN),
+                GuiRect::new(8.0 + BTN + 8.0, h - 12.0 - BTN, BTN, BTN),
+                GuiRect::new(8.0, h - 2.0 * (12.0 + BTN), BTN, BTN),
+            )
+        } else {
+            let by = (TOUCH_BAR_H - TOUCH_BTN) / 2.0;
+            let small_y = TOUCH_BAR_H - 8.0 - 30.0;
+            let cx = w / 2.0;
+            (
+                GuiRect::new(12.0, by, TOUCH_BTN, TOUCH_BTN),
+                GuiRect::new(w - 12.0 - TOUCH_BTN, by, TOUCH_BTN, TOUCH_BTN),
+                GuiRect::new(w - 2.0 * (12.0 + TOUCH_BTN), by, TOUCH_BTN, TOUCH_BTN),
+                GuiRect::new(cx - BTN - 6.0, 8.0, BTN, 30.0),
+                GuiRect::new(cx + 6.0, 8.0, BTN, 30.0),
+                GuiRect::new(cx - BTN - 6.0, small_y, BTN, 30.0),
+                GuiRect::new(cx + 6.0, small_y, BTN, 30.0),
+            )
+        };
+
+    let (shield_held, fire_held, thrust_held) = held;
+    touch_button(ctx, &shield_btn, FA_SHIELD, shield_held, icons);
+    touch_button(ctx, &fire_btn, FA_CROSSHAIRS, fire_held, icons);
+    touch_button(ctx, &thrust_btn, FA_ROCKET, thrust_held, icons);
+    icon_button(ctx, &menu_btn, FA_BARS, true, icons);
+    icon_button(ctx, &music_btn, FA_MUSIC, music_on, icons);
+    icon_button(ctx, &sfx_btn, FA_VOLUME, sfx_on, icons);
+    let fs_glyph = if agg_gui::fullscreen::is_active() {
+        FA_COMPRESS
+    } else {
+        FA_EXPAND
+    };
+    icon_button(ctx, &fullscreen_btn, fs_glyph, true, icons);
+
+    ChromeLayout {
+        game: (dx, dy, dw, dh),
+        music_btn,
+        sfx_btn,
+        fullscreen_btn,
+        touch: Some(TouchLayout {
+            shield_btn,
+            fire_btn,
+            thrust_btn,
+            menu_btn,
+        }),
+    }
+}
+
 /// Paint backdrop, rail/bar, buttons, and the frame around the (still
 /// unpainted) game rect; the caller blits the game image into
-/// `layout.game` afterwards.
+/// `layout.game` afterwards. `touch_held` enables the mobile
+/// virtual-gamepad layout and lights the held buttons.
+#[allow(clippy::too_many_arguments)]
 pub fn paint(
     ctx: &mut dyn DrawCtx,
     w: f64,
     h: f64,
     music_on: bool,
     sfx_on: bool,
+    touch_held: Option<(bool, bool, bool)>,
     icons: &Arc<Font>,
 ) -> ChromeLayout {
     let backdrop = Color::from_rgb8(11, 13, 18);
@@ -107,6 +279,10 @@ pub fn paint(
     ctx.begin_path();
     ctx.rect(0.0, 0.0, w, h);
     ctx.fill();
+
+    if let Some(held) = touch_held {
+        return paint_touch(ctx, w, h, music_on, sfx_on, held, icons);
+    }
 
     // Side rail whenever full-height aspect-fit leaves the slack for
     // it; bottom bar otherwise (widget coords are bottom-left, Y-up).
@@ -186,5 +362,6 @@ pub fn paint(
         music_btn,
         sfx_btn,
         fullscreen_btn,
+        touch: None,
     }
 }

@@ -54,6 +54,7 @@ pub mod sprite_list;
 pub mod statbar;
 pub mod thrust;
 pub mod title_screen;
+pub mod touch_input;
 pub mod virtual_frame;
 
 use std::sync::Arc;
