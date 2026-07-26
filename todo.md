@@ -93,39 +93,41 @@ from differing readings of the broken method; SYNC is the reliable
 signal). The shipped-game backup `C:\Development\Backups\2097-05`
 referenced in CLAUDE.md does NOT exist on this machine.
 
-STRATEGY PIVOT (Lars, 2026-07-26): shipped demos become CAPTURES,
-not simulations. Capture a faithful C++ run per demo — per beat:
-every visible sprite's (system, subtype, animation frame, x, y),
-the sounds triggered, and the statbar/score line — and the Rust
-side plays that back like a compressed video. Demos then survive
-any future gameplay changes/improvements; a Rust recorder writing
-the same format later makes NEW demos. Bit-exact 1997 parity stops
-being a demo requirement (the determinism substrate stays healthy
-for future net play via the our-determinism golden).
+STRATEGY PIVOT (Lars, 2026-07-26): demos become CAPTURES, not
+simulations — per beat: every visible sprite's (system, subtype,
+animation frame, x, y), the sounds triggered, and the statbar/score
+line — played back like compressed video, so demos survive gameplay
+changes; a Rust recorder in the same format makes new demos.
 
-KNOWN BLOCKER: the rebuilt C++ replay's pilot ALSO dies — all three
-traced demos ran exactly +30 beats past their recorded length (the
-`!visible * 30` grace), so modern MSVC x87 codegen diverges from
-MSVC 4.x too. A compiler-flag sweep (/Od, /fp:fast, /O1, x87
-control-word variants) is testing whether some combo reproduces
-1997 — the fitness signal is a demo finishing at EXACTLY its
-recorded length with the ship alive. Fallback if none does: restore
-the shipped-exe backup (missing from this machine) and capture from
-the real binary via instrumentation.
+CASE CLOSED — WHY THE SHIPPED DEMOS DESYNC (2026-07-26, verified in
+the headless reference): the .dat files were recorded in JUNE 1996
+(demo00-09 on 6/3/96 — two days BEFORE the CFixed float conversion
+dated 6/5/96, i.e. on fixed-point math; demo10-30 on 6/6/96), while
+the shipped sim was heavily rewritten through March 1997. THE 1997
+BINARY ITSELF COULD NOT REPLAY THEM — the attract-mode ghost ship
+died early and the demo played out shipless. Proof of OUR
+correctness: an exhaustive MSVC flag/precision sweep is
+bit-identical; the Rust port dies at the same beat as the rebuilt
+C++ (demo00: beat 15, a bomber crossing the reshuffled spawn); and
+demo30.dat (level 0, Return-ended, post-rewrite recording style)
+replays PERFECTLY to its exact length in both. The port is
+confirmed behaviorally faithful to the shipped game; the 1996
+inputs remain valid as determinism regressions, never as "ship
+survives" oracles. Only a June-1996 source snapshot could ever
+revive them (none exists on this machine).
 
-- Faithful C++ run: finish the flag sweep; if green, extend the
-  headless driver to dump the capture stream for all 27+ demos.
-- Capture format: compact + versioned (delta/RLE per beat); decided
-  when the first real dump exists.
-- Rust capture player: renders sprites at recorded positions and
-  fires recorded sounds — no sim; replaces sim-replay for the Demo
-  button and the attract mode. Keep `tests/demo_replay.rs` (the
-  our-determinism golden) as the sim regression suite.
-- Rust capture recorder (later): record new/improved demos in the
-  same format.
-- The sync-divergence root cause (collision timing, first f32 diff
-  around demo00 beats 340-356) is now OPTIONAL polish for the sim's
-  own fidelity, not a demo blocker.
+- Capture format: compact + versioned (delta/RLE per beat), decided
+  when the first real dump exists. Source of demo content = NEW
+  recordings (Lars playing, via the Rust recorder below); the 1996
+  inputs are not resurrectable. Optionally also capture the
+  authentic shipped attract behavior (shipless world) for history.
+- Rust capture RECORDER first (records live play to the format),
+  then the capture PLAYER (renders sprites at recorded positions,
+  fires recorded sounds — no sim) wired to the Demo button and the
+  attract idle. Keep `tests/demo_replay.rs` (the our-determinism
+  golden over the 1996 input streams) as the sim regression suite.
+- The C++/Rust sync drift (collision timing, first divergence
+  demo00 beat 353) is OPTIONAL sim-fidelity polish now.
 
 ## Phase 10 — Polish + ship
 
