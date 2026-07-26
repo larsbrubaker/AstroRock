@@ -28,17 +28,16 @@ const FA_EXPAND: &str = "\u{f065}";
 const FA_COMPRESS: &str = "\u{f066}";
 const FA_SHIELD: &str = "\u{f132}";
 const FA_CROSSHAIRS: &str = "\u{f05b}";
-const FA_ROCKET: &str = "\u{f135}";
 const FA_BARS: &str = "\u{f0c9}";
 
-/// The mobile virtual-gamepad rects: the tilt joystick pad, shield
-/// and thrust under the left thumb, fire under the right, and the
-/// menu (Esc) tap target.
+/// The mobile virtual-gamepad rects: the tilt joystick pad and
+/// shield under the left thumb, fire under the right, and the menu
+/// (Esc) tap target. There is no thrust button — full stick
+/// deflection IS thrust (the dot merging into the ring shows it).
 pub struct TouchLayout {
     pub stick: GuiRect,
     pub shield_btn: GuiRect,
     pub fire_btn: GuiRect,
-    pub thrust_btn: GuiRect,
     pub menu_btn: GuiRect,
 }
 
@@ -47,7 +46,6 @@ pub struct TouchLayout {
 pub struct TouchUi {
     pub shield: bool,
     pub fire: bool,
-    pub thrust: bool,
     /// Dot position in steering units (length 1 = full deflection).
     pub stick_pos: (f64, f64),
     /// Steering engaged (outside the dead zone, or thumb on the pad).
@@ -152,8 +150,9 @@ fn touch_button(ctx: &mut dyn DrawCtx, rect: &GuiRect, glyph: &str, held: bool, 
 
 /// Every rect the touch layout produces — pure geometry, unit-tested
 /// for non-overlap across orientations. Left column, top to bottom:
-/// tilt joystick (tap/release recalibrates the rest plane), shield,
-/// thrust. Right column: music + sfx mutes, fullscreen + Esc, fire.
+/// tilt joystick (release recalibrates the rest plane; full
+/// deflection = thrust), shield. Right column: music + sfx mutes,
+/// fullscreen + Esc, fire.
 pub(crate) struct TouchRects {
     pub game: (f64, f64, f64, f64),
     pub landscape: bool,
@@ -162,7 +161,6 @@ pub(crate) struct TouchRects {
     pub zone_h: f64,
     pub stick: GuiRect,
     pub shield: GuiRect,
-    pub thrust: GuiRect,
     pub fire: GuiRect,
     pub fs: GuiRect,
     pub menu: GuiRect,
@@ -204,18 +202,26 @@ pub(crate) fn touch_rects(w: f64, h: f64) -> TouchRects {
         )
     };
 
-    // Big-button size: three stacked per column plus a small pair
-    // row, never wider than the column, clamped to thumb sizes.
+    // Button sizing: the right column stacks fire + two small rows;
+    // the left is just stick + shield, so the stick can grow into
+    // whatever room the column offers (it's the primary control).
     let small = 36.0_f64.min(((col_w - 3.0 * PAD) / 2.0).max(20.0));
     let big = (col_w - 2.0 * PAD)
         .min((zone_h - 2.0 * (small + GAP) - 2.0 * PAD - 2.0 * GAP) / 3.0)
         .clamp(30.0, 104.0);
+    let stick_size = (col_w - 2.0 * PAD)
+        .min(zone_h - big - 2.0 * PAD - GAP)
+        .clamp(30.0, 180.0);
 
-    // Left column, bottom-anchored: thrust (bottom), shield, stick.
+    // Left column, bottom-anchored: shield (bottom), stick above it.
     let lcx = left_x + col_w / 2.0;
-    let thrust = GuiRect::new(lcx - big / 2.0, PAD, big, big);
-    let shield = GuiRect::new(lcx - big / 2.0, PAD + big + GAP, big, big);
-    let stick = GuiRect::new(lcx - big / 2.0, PAD + 2.0 * (big + GAP), big, big);
+    let shield = GuiRect::new(lcx - big / 2.0, PAD, big, big);
+    let stick = GuiRect::new(
+        lcx - stick_size / 2.0,
+        PAD + big + GAP,
+        stick_size,
+        stick_size,
+    );
 
     // Right column, bottom-anchored: fire (bottom), then the
     // fullscreen+Esc pair, then the music+sfx mutes on top.
@@ -236,7 +242,6 @@ pub(crate) fn touch_rects(w: f64, h: f64) -> TouchRects {
         zone_h,
         stick,
         shield,
-        thrust,
         fire,
         fs,
         menu,
@@ -292,7 +297,6 @@ fn paint_touch(
     );
 
     touch_button(ctx, &r.shield, FA_SHIELD, ui.shield, icons);
-    touch_button(ctx, &r.thrust, FA_ROCKET, ui.thrust, icons);
     touch_button(ctx, &r.fire, FA_CROSSHAIRS, ui.fire, icons);
     icon_button(ctx, &r.music, FA_MUSIC, music_on, icons);
     icon_button(ctx, &r.sfx, FA_VOLUME, sfx_on, icons);
@@ -313,7 +317,6 @@ fn paint_touch(
             stick: r.stick,
             shield_btn: r.shield,
             fire_btn: r.fire,
-            thrust_btn: r.thrust,
             menu_btn: r.menu,
         }),
     }
@@ -453,7 +456,6 @@ mod tests {
             let rects = [
                 ("stick", &r.stick),
                 ("shield", &r.shield),
-                ("thrust", &r.thrust),
                 ("fire", &r.fire),
                 ("fs", &r.fs),
                 ("menu", &r.menu),
