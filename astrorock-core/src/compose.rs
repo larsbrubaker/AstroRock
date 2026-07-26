@@ -43,12 +43,18 @@ impl Game {
 
     /// Compose one frame into the indexed back buffer (`DrawFrame`).
     pub fn compose(&mut self) {
+        // The start screen replaces the whole 640x480 (own palette).
+        if self.state == Screen::Menu {
+            self.menu.draw(&mut self.screen);
+            return;
+        }
+
         let iris = self.state == Screen::Intermission && self.inter.close_level > 0;
         let tally = self.state == Screen::Intermission && !iris;
         let on_screen = self.on_screen();
 
         // `DrawPlayField`: camera follows the local player.
-        if self.state != Screen::Attract && !tally {
+        if !tally {
             self.world
                 .move_point_to_center(self.ship.sprite.x_pos as i32, self.ship.sprite.y_pos as i32);
         }
@@ -88,17 +94,14 @@ impl Game {
         }
 
         match self.state {
-            Screen::Attract => {
-                // The original attract is demo playback — the full game
-                // view with the stat bar. Ours shows it with the idle
-                // (zeroed) local player until Phase 9 demos land.
-                self.statbar.draw(&mut self.screen, &self.ship, 0);
-                Self::overlay_center(
-                    &mut self.screen,
-                    &self.press_enter,
-                    &on_screen,
-                    &self.transred,
-                );
+            Screen::Menu => unreachable!("handled above"),
+            Screen::Demo => {
+                // `STATE_PLAYINGDEMO` draws the full play field.
+                self.ship
+                    .draw(&self.world, &mut self.screen, &mut self.thrust);
+                self.statbar
+                    .draw(&mut self.screen, &self.ship, self.level as u32);
+                self.draw_radar();
             }
             Screen::Playing => {
                 self.ship

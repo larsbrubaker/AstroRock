@@ -34,6 +34,7 @@ pub mod heartbeat;
 pub mod hks;
 pub mod input;
 pub mod intermission;
+pub mod menu;
 pub mod palette;
 pub mod pship;
 pub mod radar;

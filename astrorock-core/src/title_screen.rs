@@ -31,6 +31,9 @@ pub struct TitleScreen {
     music_btn: GuiRect,
     sfx_btn: GuiRect,
     fullscreen_btn: GuiRect,
+    /// Where the game surface landed last paint (widget coords) —
+    /// translates mouse events into 640x480 game coordinates.
+    game_rect: (f64, f64, f64, f64),
 }
 
 impl TitleScreen {
@@ -48,7 +51,17 @@ impl TitleScreen {
             music_btn: GuiRect::default(),
             sfx_btn: GuiRect::default(),
             fullscreen_btn: GuiRect::default(),
+            game_rect: (0.0, 0.0, 1.0, 1.0),
         }
+    }
+
+    /// Widget position -> 640x480 game-surface coordinates (widget Y
+    /// is bottom-up; the game screen is top-down).
+    fn to_game_coords(&self, x: f64, y: f64) -> (i32, i32) {
+        let (dx, dy, dw, dh) = self.game_rect;
+        let gx = (x - dx) / dw * SCREEN_W as f64;
+        let gy = SCREEN_H as f64 - (y - dy) / dh * SCREEN_H as f64;
+        (gx as i32, gy as i32)
     }
 }
 
@@ -97,7 +110,7 @@ impl Widget for TitleScreen {
         // request_draw").
         agg_gui::animation::request_draw();
         self.game
-            .palette
+            .current_palette()
             .frame_to_rgba(self.game.screen(), &mut self.rgba);
 
         // Window chrome (chrome.rs): backdrop, rail/bar, buttons, and
@@ -107,6 +120,7 @@ impl Widget for TitleScreen {
         self.music_btn = layout.music_btn;
         self.sfx_btn = layout.sfx_btn;
         self.fullscreen_btn = layout.fullscreen_btn;
+        self.game_rect = layout.game;
         let (dx, dy, dw, dh) = layout.game;
 
         // A fresh Arc every frame, deliberately: the slice variant's
@@ -159,8 +173,20 @@ impl Widget for TitleScreen {
                     agg_gui::fullscreen::request_toggle();
                     EventResult::Consumed
                 } else {
-                    EventResult::Ignored
+                    let (gx, gy) = self.to_game_coords(pos.x, pos.y);
+                    self.game.on_mouse_down(gx, gy);
+                    EventResult::Consumed
                 }
+            }
+            Event::MouseUp { pos, .. } => {
+                let (gx, gy) = self.to_game_coords(pos.x, pos.y);
+                self.game.on_mouse_up(gx, gy);
+                EventResult::Consumed
+            }
+            Event::MouseMove { pos } => {
+                let (gx, gy) = self.to_game_coords(pos.x, pos.y);
+                self.game.on_mouse_move(gx, gy);
+                EventResult::Ignored
             }
             _ => EventResult::Ignored,
         }
@@ -188,7 +214,9 @@ mod tests {
         assert!(!t.game.music_on && t.game.sfx_on);
         assert_eq!(t.on_event(&click(150.0, 20.0)), EventResult::Consumed);
         assert!(!t.game.music_on && !t.game.sfx_on);
-        // A click outside both buttons is ignored.
-        assert_eq!(t.on_event(&click(400.0, 20.0)), EventResult::Ignored);
+        // A click outside the chrome forwards into the game surface
+        // (menu buttons live there now) without touching the toggles.
+        assert_eq!(t.on_event(&click(400.0, 20.0)), EventResult::Consumed);
+        assert!(!t.game.music_on && !t.game.sfx_on);
     }
 }

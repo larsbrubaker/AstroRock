@@ -37,17 +37,32 @@ work. If this file ever describes finished work, that's a bug. Use
 - Volume/mute controls (M key, sliders) — land with Phase 8 options
   UI and the settings store.
 
-## Phase 8 — Faithful bitmap UI
+## Phase 8 — Faithful bitmap UI (IN PROGRESS)
 
-- Bitmap `Font` (`Font.cpp`, fonts are FrameSequences), `region.cpp` →
-  `button.cpp` (2-state bitmap buttons) → `DragButton.cpp` (sliders).
-- `StartScreen.cpp` (2018 lines): main menu, options, key/gamepad
-  config, credits, help, high-score entry — original bitmaps, original
-  look.
-- `HighScore.cpp`, intermission/pause/game-over flows, `text.hpp`
-  strings → `text.rs`.
+Landed (menu.rs): boot into the shipped start screen (start.png with
+its own palette), 2-state bitmap buttons at the 1997 coordinates
+firing on release with the click sound, Enter-starts, the config
+page's start-level picker, credits, really-quit confirm, the Demo
+button playing an embedded recording, and (modern, by request) Esc
+in-game pausing into the config page.
+
+- The bad-guy showcase monitor on the main screen (enemy previews
+  cycling behind static transitions, `pStatic`/`SwitchBadGuyPause`
+  with the FadeBlit fade-in).
+- Help pages (`ppHelpText` from text.hpp) behind the Help button.
+- High scores: `HighScore.cpp` list + entry + View High button.
+- Key remapping (`STATE_CONFIG_KEYS`, cfgkeys art, key capture) —
+  input.rs bindings become data; joystick/gamepad config with it.
+- Sound config (`STATE_CONFIG_SOUND`): DragButton sliders for
+  master/music volume, stereo + mixing toggles (today's chrome
+  toggles remain the shortcut).
+- Pause overlay (`STATE_PAUSE`, pause.png, Pause key, FastDeaths
+  freeze) — Esc-options covers most of the need already.
 - Settings store trait (JSON; file on native, localStorage on wasm)
-  replacing binary `Astro.cfg` — key bindings, volumes, high scores.
+  replacing binary `Astro.cfg` — key bindings, volumes, start level,
+  HighestLevelReached gating, high scores.
+- Attract: auto-play a demo after idle time on the main screen
+  (original `STATE_MAIN` timeout), once demo parity is proven.
 
 ## Phase 9 — Demo regression suite (IN PROGRESS)
 

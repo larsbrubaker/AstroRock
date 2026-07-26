@@ -64,6 +64,8 @@ pub enum SfxId {
     VoicePayback,
     /// The spawn shimmer (`rShimmerSnd`).
     Shimmer,
+    /// Menu button click (`rClickedSnd`).
+    Clicked,
 }
 
 /// `pNewPlayerSounds` / `pDeadPlayerSounds` / `pCarnagePlayerSounds` /
@@ -129,6 +131,7 @@ impl SfxId {
             SfxId::VoicePaint => "paint",
             SfxId::VoicePayback => "payback",
             SfxId::Shimmer => "shimmer",
+            SfxId::Clicked => "clicked",
         }
     }
 
@@ -179,6 +182,7 @@ impl SfxId {
             VoicePaint => "paint",
             VoicePayback => "payback",
             Shimmer => "shimmer",
+            Clicked => "clicked",
         }
     }
 
@@ -219,6 +223,7 @@ impl SfxId {
             SfxId::VoicePaint,
             SfxId::VoicePayback,
             SfxId::Shimmer,
+            SfxId::Clicked,
         ]
     }
 }
@@ -360,6 +365,7 @@ pub fn dispatch(
             GameEvent::SfxChangeGun => sink.play(SfxId::ChangeGun, 0),
             GameEvent::SfxBonus => sink.play(SfxId::Bonus, 0),
             GameEvent::SfxShimmer => sink.play(SfxId::Shimmer, 0),
+            GameEvent::SfxClicked => sink.play(SfxId::Clicked, 0),
             GameEvent::GoodyCollected { kind } => {
                 if local_rand.rand(4) != 0 {
                     sink.play(SfxId::Goody, 0);

@@ -10,6 +10,16 @@ use crate::game::{Game, Screen};
 use crate::rect::Rect;
 
 impl Game {
+    /// `STATE_GAMEOVER` exit: back to the start screen.
+    pub(crate) fn game_over_to_menu(&mut self) {
+        self.level = 0;
+        self.reset_level();
+        self.menu.show_main();
+        self.state = Screen::Menu;
+    }
+}
+
+impl Game {
     /// The `STATE_PLAYING` switch arm, in the C++ order: level end
     /// first, (Esc quit-confirm arrives with Phase 8), then the spawn
     /// gate. The death check lives in `sim_beat` like the original's
@@ -87,24 +97,22 @@ mod tests {
     }
 
     #[test]
-    fn attract_composes_stars_rocks_and_teaser() {
+    fn boot_composes_the_start_screen() {
         let mut g = Game::new(None);
         g.compose();
         let screen = g.screen();
-        let stars = screen.bits.iter().filter(|&&b| b == 15).count();
-        assert!(stars > 0, "no stars plotted");
-
-        let cx = SCREEN_W / 2;
-        let cy = SCREEN_H / 2;
-        let mut non_zero = 0;
-        for y in (cy - 100)..(cy + 100) {
-            for x in (cx - 140)..(cx + 140) {
-                if screen.get(x, y) != 0 {
-                    non_zero += 1;
-                }
-            }
-        }
-        assert!(non_zero > 1000, "teaser not composed: {non_zero}");
+        // The start.png backdrop fills the frame with plenty of art,
+        // and the menu presents through its own palette.
+        let non_zero = screen.bits.iter().filter(|&&b| b != 0).count();
+        assert!(
+            non_zero > 50_000,
+            "start screen not composed: {non_zero} lit pixels"
+        );
+        assert_ne!(
+            g.current_palette().rgb.to_vec(),
+            crate::assets::game_palette().rgb.to_vec(),
+            "menu should present through start.png's palette"
+        );
     }
 
     /// Enter twice: attract -> game, then through the

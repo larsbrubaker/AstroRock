@@ -5,7 +5,6 @@
 //! cargo run -p astrorock-core --example dump_frame -- out.png
 //! ```
 
-use astrorock_core::assets;
 use astrorock_core::game::Game;
 
 fn main() {
@@ -15,9 +14,10 @@ fn main() {
 
     let mut game = Game::new(None);
     game.compose();
-    let screen = game.screen();
     let mut rgba = Vec::new();
-    assets::game_palette().frame_to_rgba(screen, &mut rgba);
+    game.current_palette()
+        .frame_to_rgba(game.screen(), &mut rgba);
+    let screen = game.screen();
 
     let file = std::fs::File::create(&path).expect("create output file");
     let mut encoder = png::Encoder::new(

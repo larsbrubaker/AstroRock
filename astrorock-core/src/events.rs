@@ -36,6 +36,8 @@ pub enum GameEvent {
     VoiceDead,
     /// Respawned after death (`AddPlayer` new-ship bank).
     VoiceNewShip,
+    /// A menu button fired (`pClickedSound`, rClickedSnd).
+    SfxClicked,
     /// `GetGoody` picked up (the pickup jingle / voice line).
     GoodyCollected { kind: GoodyKind },
 }

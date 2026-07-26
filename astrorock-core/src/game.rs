@@ -33,6 +33,7 @@ use crate::heartbeat::HeartBeat;
 use crate::hks::Hks;
 use crate::input::{self, Binding, KeysHeld};
 use crate::intermission::{Intermission, LevelStats};
+use crate::menu::{Menu, MenuAction};
 use crate::palette::{FadeBlits, Palette};
 use crate::pship::{PlayerShip, ShipInputs};
 use crate::radar::Radar;
@@ -62,11 +63,14 @@ const GAME_OVER_PAUSE: i32 = 600;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Screen {
-    Attract,
+    /// The start screen (`STATE_STARTGAME` + menu.rs pages).
+    Menu,
     Playing,
     /// Level cleared: iris shut, then the bonus tally.
     Intermission,
     GameOver,
+    /// `STATE_PLAYINGDEMO` — a shipped recording plays back.
+    Demo,
 }
 
 pub struct Game {
@@ -124,6 +128,15 @@ pub struct Game {
     /// Chrome-bar toggles.
     pub music_on: bool,
     pub sfx_on: bool,
+    /// The start screen (menu.rs).
+    pub(crate) menu: Menu,
+    /// Active demo playback: (embedded index, next beat).
+    pub(crate) demo_run: Option<(usize, usize)>,
+    /// `LastDemo` — don't repeat the same recording back to back.
+    last_demo: usize,
+    /// MSVC `rand()` (never srand'd — seed 1): burns the randomized
+    /// LocalRand/NetRand draw counts at `START_ONEPLAYER`.
+    crt_seed: u32,
 }
 
 impl Game {
@@ -182,7 +195,7 @@ impl Game {
             local_rand: Rand::new(),
             heartbeat: HeartBeat::new(0),
             started: Instant::now(),
-            state: Screen::Attract,
+            state: Screen::Menu,
             keys: KeysHeld::default(),
             enter_pressed: false,
             ship: PlayerShip::new(),
@@ -206,7 +219,19 @@ impl Game {
             due_voice: None,
             prev_score: 0,
             carnage_counter: 0,
+            menu: Menu::new(),
+            demo_run: None,
+            last_demo: usize::MAX,
+            crt_seed: 1,
         }
+    }
+
+    /// MSVC CRT `rand()` — `seed*214013+2531011`, top 15 bits. The
+    /// original never called `srand`, so the sequence from seed 1 is
+    /// part of the behavior.
+    fn crt_rand(&mut self) -> u32 {
+        self.crt_seed = self.crt_seed.wrapping_mul(214013).wrapping_add(2531011);
+        (self.crt_seed >> 16) & 0x7FFF
     }
 
     /// Milliseconds since construction — the widget's paint clock.
@@ -233,17 +258,89 @@ impl Game {
             + self.fastdeaths.num_fast_deaths
     }
 
-    /// Start a fresh game (Enter from attract) — `NewGame`.
-    fn start_game(&mut self) {
-        self.net_rand.seed(0);
-        self.level = 0;
+    /// `START_ONEPLAYER` + `NewGame`: burn a CRT-randomized count of
+    /// LocalRand and NetRand draws (the original's game-to-game
+    /// variety), then start at `level` (`GlobalStartLevel`).
+    fn start_game(&mut self, level: u32) {
+        let n = self.crt_rand() % 256;
+        for _ in 0..n {
+            self.local_rand.rand(256);
+        }
+        let n = self.crt_rand() % 256;
+        for _ in 0..n {
+            self.net_rand.rand(256);
+        }
+        self.level = level as usize;
         self.ship = PlayerShip::new();
         self.ship.reset(NUM_START_SHIPS);
-        self.stats.reset(0);
+        self.stats.reset(level);
         self.new_level();
         self.local_player_dead = false;
         self.game_over_pause = 0;
         self.state = Screen::Playing;
+    }
+
+    /// `StartDemoButton` + `LoadADemo`: a LocalRand pick that never
+    /// repeats the previous recording.
+    fn play_demo(&mut self) {
+        let demos = crate::demo::embedded_demos();
+        let mut pick = self.local_rand.rand(demos.len() as u32) as usize;
+        while pick == self.last_demo {
+            pick = self.local_rand.rand(demos.len() as u32) as usize;
+        }
+        self.last_demo = pick;
+        let demo = crate::demo::Demo::parse(demos[pick]).expect("embedded demo parses");
+        self.init_demo(demo.start_level);
+        self.demo_run = Some((pick, 0));
+        self.state = Screen::Demo;
+    }
+
+    /// Demo over or interrupted: back to the start screen
+    /// (`CurLevel = 0; ResetAll(); StartScreenShow`).
+    fn end_demo(&mut self) {
+        self.demo_run = None;
+        self.level = 0;
+        self.reset_level();
+        self.menu.show_main();
+        self.state = Screen::Menu;
+    }
+
+    fn handle_menu_action(&mut self, action: MenuAction) {
+        match action {
+            MenuAction::StartGame { level } => self.start_game(level),
+            MenuAction::PlayDemo => self.play_demo(),
+            MenuAction::ResumeGame => self.state = Screen::Playing,
+            MenuAction::Quit => {
+                #[cfg(not(target_arch = "wasm32"))]
+                std::process::exit(0);
+                #[cfg(target_arch = "wasm32")]
+                self.menu.show_main();
+            }
+        }
+    }
+
+    /// Mouse input in 640x480 game-surface coordinates.
+    pub fn on_mouse_move(&mut self, x: i32, y: i32) {
+        if self.state == Screen::Menu {
+            self.menu.on_mouse_move(x, y);
+        }
+    }
+
+    pub fn on_mouse_down(&mut self, x: i32, y: i32) {
+        match self.state {
+            Screen::Menu => self.menu.on_mouse_down(x, y),
+            // `MouseHasChanged()` interrupts a demo.
+            Screen::Demo => self.end_demo(),
+            _ => {}
+        }
+    }
+
+    pub fn on_mouse_up(&mut self, x: i32, y: i32) {
+        if self.state == Screen::Menu {
+            if let Some(action) = self.menu.on_mouse_up(x, y, &mut self.events) {
+                self.handle_menu_action(action);
+            }
+        }
     }
 
     /// `NewLevel` — reset the world, then wait for Enter to spawn
@@ -336,14 +433,37 @@ impl Game {
             }
 
             match self.state {
-                Screen::Attract => {
-                    if self.enter_pressed {
+                Screen::Menu => {
+                    // `STATE_MAIN`: Enter starts a game (line 758ff);
+                    // clicks arrive through on_mouse_up.
+                    if self.enter_pressed && self.menu.enter_starts() {
                         self.enter_pressed = false;
-                        self.start_game();
+                        let level = self.menu.start_level;
+                        self.start_game(level);
                         continue;
                     }
-                    self.rocks.update(&clip, &mut self.net_rand);
-                    self.explosions.update(&clip, &mut self.net_rand);
+                }
+                Screen::Demo => {
+                    let done = if let Some((which, beat)) = self.demo_run {
+                        let demos = crate::demo::embedded_demos();
+                        let demo =
+                            crate::demo::Demo::parse(demos[which]).expect("embedded demo parses");
+                        // `DemoUpdate >= NumDemoUpdates + (!visible * 30)`.
+                        let grace = if self.ship.sprite.visible { 0 } else { 30 };
+                        if beat < demo.key_flags.len() + grace {
+                            let flags = demo.key_flags.get(beat).copied().unwrap_or(0);
+                            self.demo_beat(flags);
+                            self.demo_run = Some((which, beat + 1));
+                            false
+                        } else {
+                            true
+                        }
+                    } else {
+                        true
+                    };
+                    if done {
+                        self.end_demo();
+                    }
                 }
                 Screen::Playing => {
                     // The C++ switch arm: transitions first, then
@@ -356,11 +476,9 @@ impl Game {
                 Screen::GameOver => {
                     // Exit check, `GameOverPause++`, `AdvanceFrames` —
                     // in that order; Enter (or the 20s timeout)
-                    // returns to attract.
+                    // returns to the start screen.
                     if self.enter_pressed || self.game_over_pause >= GAME_OVER_PAUSE {
-                        self.level = 0;
-                        self.reset_level();
-                        self.state = Screen::Attract;
+                        self.game_over_to_menu();
                     } else {
                         self.game_over_pause += 1;
                         self.sim_beat(clip);
@@ -583,7 +701,7 @@ impl Game {
                 for _ in self.events.drain() {}
                 self.due_voice = None;
             }
-            let playing = self.state == Screen::Playing;
+            let playing = matches!(self.state, Screen::Playing | Screen::Demo);
             let alive = playing && self.ship.sprite.visible;
             sink.set_loop(
                 LoopKind::Thrust,
@@ -619,8 +737,25 @@ impl Game {
         &self.screen
     }
 
+    /// The palette to present through — the start screen shows with
+    /// its own art's palette (`LoadPalette(rStartBmp)`).
+    pub fn current_palette(&self) -> &Palette {
+        if self.state == Screen::Menu {
+            &self.menu.palette
+        } else {
+            &self.palette
+        }
+    }
+
     /// Route a key through the bindings table (input.rs).
     pub fn set_key(&mut self, key: &Key, down: bool) -> bool {
+        // `MyKbhit()` — ANY key interrupts demo playback.
+        if self.state == Screen::Demo {
+            if down {
+                self.end_demo();
+            }
+            return true;
+        }
         match input::binding(key) {
             Some(Binding::Left) => self.keys.left = down,
             Some(Binding::Right) => self.keys.right = down,
@@ -631,6 +766,28 @@ impl Game {
             Some(Binding::Start) => {
                 if down {
                     self.enter_pressed = true;
+                }
+            }
+            Some(Binding::Menu) => {
+                if down {
+                    match self.state {
+                        // The requested flow: Esc pauses into options.
+                        Screen::Playing => {
+                            self.menu.show_options_from_game();
+                            self.state = Screen::Menu;
+                        }
+                        Screen::Menu => {
+                            if let Some(action) = self.menu.on_escape() {
+                                self.handle_menu_action(action);
+                            }
+                        }
+                        // Esc skips the tally / game over, like the
+                        // original's `KeyArray[SC_ESCAPE]` checks.
+                        Screen::Intermission | Screen::GameOver => {
+                            self.enter_pressed = true;
+                        }
+                        Screen::Demo => unreachable!("handled above"),
+                    }
                 }
             }
             None => return false,

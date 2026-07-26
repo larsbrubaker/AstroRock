@@ -54,6 +54,74 @@ pub const TALLYWIN_PNG: &[u8] = include_bytes!("../../assets/interfac/tallywin.p
 /// `rEndgameBmp` — the GAME OVER overlay.
 pub const ENDGAME_PNG: &[u8] = include_bytes!("../../assets/interfac/endgame.png");
 
+/// `rStartBmp` — the start-screen backdrop, which carries ITS OWN
+/// palette (`m_StartGameFrame.LoadPalette(rStartBmp)`).
+pub const START_PNG: &[u8] = include_bytes!("../../assets/interfac/start.png");
+/// `rReallyqBmp` — "Are you sure you want to quit?".
+pub const REALLYQ_PNG: &[u8] = include_bytes!("../../assets/interfac/reallyq.png");
+
+/// Start-screen button art (up/down pairs).
+pub const STRGM_PNG: [&[u8]; 2] = [
+    include_bytes!("../../assets/interfac/strgm1.png"),
+    include_bytes!("../../assets/interfac/strgm2.png"),
+];
+pub const NETR_PNG: [&[u8]; 2] = [
+    include_bytes!("../../assets/interfac/netr1.png"),
+    include_bytes!("../../assets/interfac/netr2.png"),
+];
+pub const VHIGH_PNG: [&[u8]; 2] = [
+    include_bytes!("../../assets/interfac/vhigh1.png"),
+    include_bytes!("../../assets/interfac/vhigh2.png"),
+];
+pub const CRED_PNG: [&[u8]; 2] = [
+    include_bytes!("../../assets/interfac/cred1.png"),
+    include_bytes!("../../assets/interfac/cred2.png"),
+];
+pub const CONFIG_PNG: [&[u8]; 2] = [
+    include_bytes!("../../assets/interfac/config1.png"),
+    include_bytes!("../../assets/interfac/config2.png"),
+];
+pub const HELP_PNG: [&[u8]; 2] = [
+    include_bytes!("../../assets/interfac/help1.png"),
+    include_bytes!("../../assets/interfac/help2.png"),
+];
+pub const QUIT_PNG: [&[u8]; 2] = [
+    include_bytes!("../../assets/interfac/quit1.png"),
+    include_bytes!("../../assets/interfac/quit2.png"),
+];
+pub const DEMO_PNG: [&[u8]; 2] = [
+    include_bytes!("../../assets/interfac/demo1.png"),
+    include_bytes!("../../assets/interfac/demo2.png"),
+];
+pub const DONE_PNG: [&[u8]; 2] = [
+    include_bytes!("../../assets/interfac/done1.png"),
+    include_bytes!("../../assets/interfac/done2.png"),
+];
+pub const BUTTONL_PNG: [&[u8]; 2] = [
+    include_bytes!("../../assets/interfac/buttonl1.png"),
+    include_bytes!("../../assets/interfac/buttonl2.png"),
+];
+pub const BUTTONR_PNG: [&[u8]; 2] = [
+    include_bytes!("../../assets/interfac/buttonr1.png"),
+    include_bytes!("../../assets/interfac/buttonr2.png"),
+];
+pub const CFGKEYS_PNG: [&[u8]; 2] = [
+    include_bytes!("../../assets/interfac/cfgkeys1.png"),
+    include_bytes!("../../assets/interfac/cfgkeys2.png"),
+];
+pub const CFGSND_PNG: [&[u8]; 2] = [
+    include_bytes!("../../assets/interfac/cfgsnd1.png"),
+    include_bytes!("../../assets/interfac/cfgsnd2.png"),
+];
+pub const YES_PNG: [&[u8]; 2] = [
+    include_bytes!("../../assets/interfac/yes1.png"),
+    include_bytes!("../../assets/interfac/yes2.png"),
+];
+pub const NO_PNG: [&[u8]; 2] = [
+    include_bytes!("../../assets/interfac/no1.png"),
+    include_bytes!("../../assets/interfac/no2.png"),
+];
+
 /// `rGloop2Pal` / `rGloop3Pal` — gloop tier recolor remap tables.
 pub const GLOOP2_PAL: &[u8] = include_bytes!("../../assets/palettes/gloop2.pal");
 pub const GLOOP3_PAL: &[u8] = include_bytes!("../../assets/palettes/gloop3.pal");
@@ -93,6 +161,23 @@ pub fn frame_from_indexed_png(data: &[u8]) -> Frame {
 /// The game master palette.
 pub fn game_palette() -> Palette {
     Palette::from_pal_bytes(GAME_PAL).expect("game.pal is 768 bytes")
+}
+
+/// The palette carried inside an indexed PNG (`LoadPalette(rXxxBmp)` —
+/// screens like the start menu present through their own art's
+/// palette). Entries past the PNG's PLTE stay black.
+pub fn palette_from_indexed_png(data: &[u8]) -> Palette {
+    let decoder = png::Decoder::new(data);
+    let reader = decoder.read_info().expect("embedded png header");
+    let plte = reader
+        .info()
+        .palette
+        .as_ref()
+        .expect("indexed png carries a palette");
+    let mut rgb = [0u8; 768];
+    let n = plte.len().min(768);
+    rgb[..n].copy_from_slice(&plte[..n]);
+    Palette { rgb }
 }
 
 /// A 256-entry remap table from a `.pal` remap container.

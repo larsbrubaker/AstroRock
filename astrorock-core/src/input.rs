@@ -19,6 +19,8 @@ pub enum Binding {
     Shield,
     Bomb,
     Start,
+    /// Escape — menu navigation / in-game options.
+    Menu,
 }
 
 /// Held-key state, updated from KeyDown/KeyUp deliveries.
@@ -45,6 +47,7 @@ pub fn binding(key: &Key) -> Option<Binding> {
         Key::Char(' ') | Key::Char('s') | Key::Char('S') => Binding::Shield,
         Key::Char('h') | Key::Char('H') | Key::Char('b') | Key::Char('B') => Binding::Bomb,
         Key::Enter => Binding::Start,
+        Key::Escape => Binding::Menu,
         _ => return None,
     })
 }
@@ -70,6 +73,6 @@ mod tests {
         assert_eq!(binding(&Key::Char('h')), Some(Binding::Bomb));
         assert_eq!(binding(&Key::Char('b')), Some(Binding::Bomb));
         assert_eq!(binding(&Key::Enter), Some(Binding::Start));
-        assert_eq!(binding(&Key::Escape), None);
+        assert_eq!(binding(&Key::Escape), Some(Binding::Menu));
     }
 }

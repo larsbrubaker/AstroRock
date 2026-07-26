@@ -62,6 +62,49 @@ impl Demo {
     }
 }
 
+/// The shipped recordings, embedded for in-game playback (the Demo
+/// button / attract mode). ~30 KB total.
+pub fn embedded_demos() -> &'static [&'static [u8]] {
+    macro_rules! demos {
+        ($($name:literal),+ $(,)?) => {
+            &[$(include_bytes!(concat!("../../assets/demos/", $name)) as &'static [u8],)+]
+        };
+    }
+    demos![
+        "demo00.dat",
+        "demo01.dat",
+        "demo02.dat",
+        "demo03.dat",
+        "demo04.dat",
+        "demo05.dat",
+        "demo06.dat",
+        "demo07.dat",
+        "demo08.dat",
+        "demo09.dat",
+        "demo10.dat",
+        "demo11.dat",
+        "demo12.dat",
+        "demo13.dat",
+        "demo14.dat",
+        "demo15.dat",
+        "demo16.dat",
+        "demo17.dat",
+        "demo18.dat",
+        "demo19.dat",
+        "demo20.dat",
+        "demo21.dat",
+        "demo22.dat",
+        "demo23.dat",
+        "demo24.dat",
+        "demo25.dat",
+        "demo26.dat",
+        "demo27.dat",
+        "demo28.dat",
+        "demo29.dat",
+        "demo30.dat",
+    ]
+}
+
 /// The recorded byte -> held keys (`SetInputs` from `KeyFlags`).
 pub fn keys_from_flags(flags: u8) -> KeysHeld {
     KeysHeld {
