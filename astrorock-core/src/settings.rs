@@ -167,7 +167,7 @@ impl crate::game::Game {
             let mut scores = s.high_scores;
             scores.resize(5, ("EMPTY".to_string(), 0));
             scores.truncate(5);
-            scores.sort_by(|a, b| b.1.cmp(&a.1));
+            scores.sort_by_key(|e| std::cmp::Reverse(e.1));
             self.menu.high_scores = scores;
         }
         self.settings_store = Some(store);

@@ -157,7 +157,7 @@ impl Menu {
         };
         let last = self.high_scores.len() - 1;
         self.high_scores[last] = (name, self.pending_score);
-        self.high_scores.sort_by(|a, b| b.1.cmp(&a.1));
+        self.high_scores.sort_by_key(|e| std::cmp::Reverse(e.1));
         self.settings_dirty = true;
         self.page = Page::HighScores;
     }
