@@ -19,10 +19,11 @@ use agg_gui::event::Key;
 use web_time::Instant;
 
 use crate::assets;
-use crate::audio::{self, AudioSink, LoopKind};
+use crate::audio::{self, AudioSink, LoopKind, VoicePlayer};
 use crate::bombers::Bombers;
 use crate::collide::{self, CollideCtx};
 use crate::events::Events;
+use crate::events::GameEvent;
 use crate::explosion::Explosions;
 use crate::fastdeaths::FastDeaths;
 use crate::frame::Frame;
@@ -112,6 +113,11 @@ pub struct Game {
     music_slow: bool,
     /// The rate actually sent to the sink (ramps back up on release).
     music_rate: f32,
+    /// `PausedSoundPlayer` — the delayed one-liner slot.
+    voice: VoicePlayer,
+    /// `PrevScore` + `NumFramesLookScore` — the carnage-voice window.
+    pub(crate) prev_score: u32,
+    carnage_counter: u32,
     pub(crate) audio: Option<Box<dyn AudioSink>>,
     /// Chrome-bar toggles.
     pub music_on: bool,
@@ -194,6 +200,9 @@ impl Game {
             music_freq_delay: 0,
             music_slow: false,
             music_rate: 1.0,
+            voice: VoicePlayer::new(),
+            prev_score: 0,
+            carnage_counter: 0,
         }
     }
 
@@ -271,6 +280,8 @@ impl Game {
                 self.ship.sprite.visible = false;
             }
         }
+        // `NumFramesLookScore = 0` at the end of PlayersResetAll.
+        self.carnage_counter = 0;
 
         self.rocks.reset(self.level, &mut self.net_rand);
         self.gloops.reset(self.level, &mut self.net_rand);
@@ -289,13 +300,19 @@ impl Game {
     /// death spot, or the level's pre-rolled spawn point. No new
     /// position roll — the camera has been parked on the spot the
     /// whole time, so the player can wait for a safe moment.
+    /// `NewShip` (stat reset) and the one-liner fire only when
+    /// actually dead: surviving a level carries HP and every power-up
+    /// across, exactly like `AddPlayer`'s `LocalPlayerIsDead` gate.
     pub(crate) fn respawn(&mut self) {
-        self.ship.new_ship();
+        if self.local_player_dead {
+            self.events.push(GameEvent::VoiceNewShip);
+            self.ship.new_ship();
+            self.local_player_dead = false;
+        }
         self.ship.sprite.cur_frame = 0.0;
         self.ship.sprite.x_delta = 0.0;
         self.ship.sprite.y_delta = 0.0;
         self.ship.sprite.visible = true;
-        self.local_player_dead = false;
     }
 
     /// Run the 30 Hz simulation up to `now_ms`.
@@ -399,6 +416,11 @@ impl Game {
         // `pSpeakerSprite->Update()` — right before the collide pass.
         self.speaker.update(&clip, &mut self.net_rand);
 
+        // `PlayersCollideObject` samples HP before each object pass
+        // for the hurt voice; one bracket around the pass series has
+        // the same audible outcome (the pending slot replaces).
+        let hp_before = self.ship.sprite.hp;
+
         // PlayersCollideObject order: Rocks, Gloops, SpikeBalls, HKs,
         // Bombers, FastDeaths, then Goodies.
         {
@@ -437,6 +459,24 @@ impl Game {
             &mut self.net_rand,
             &mut self.events,
         );
+
+        // The hurt voice: HP dropped this pass and it didn't kill you
+        // (`if (ps->HP < temphp && !LocalPlayerIsDead)`).
+        if self.ship.sprite.hp < hp_before && !self.local_player_dead {
+            self.events.push(GameEvent::VoiceHurt);
+        }
+        // The carnage window: `NumFramesLookScore` ticks once per
+        // PlayersCollideObject call — 7 object passes per beat; a
+        // score jump of 200+ inside the window earns a one-liner.
+        self.carnage_counter += 7;
+        if self.carnage_counter > 20 {
+            self.prev_score = self.ship.score;
+            self.carnage_counter = 0;
+        } else if self.ship.score >= self.prev_score + 200 {
+            self.prev_score = self.ship.score;
+            self.carnage_counter = 0;
+            self.events.push(GameEvent::VoiceCarnage);
+        }
 
         // The speaker pass: everything dies on its grille; the player
         // just gets bumped — and any touch is a `SkipMusic`.
@@ -506,7 +546,14 @@ impl Game {
         // queue can't grow unbounded when running silent or muted.
         if let Some(sink) = self.audio.as_deref_mut() {
             if self.sfx_on {
-                audio::dispatch(&mut self.events, sink, &mut self.local_rand);
+                audio::dispatch(
+                    &mut self.events,
+                    sink,
+                    &mut self.local_rand,
+                    &mut self.voice,
+                );
+                // `PausePlayerUpdate` — the delayed one-liner slot.
+                self.voice.update(sink);
             } else {
                 for _ in self.events.drain() {}
             }

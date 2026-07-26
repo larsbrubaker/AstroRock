@@ -28,6 +28,14 @@ pub enum GameEvent {
     SfxBonus,
     /// A warp-in started (`pShimmerSound`, rShimmerSnd).
     SfxShimmer,
+    /// The local player took damage this pass (hurt voice bank).
+    VoiceHurt,
+    /// Score jumped ≥200 inside the look window (carnage bank).
+    VoiceCarnage,
+    /// The local player died (`KillPlayer` voice bank).
+    VoiceDead,
+    /// Respawned after death (`AddPlayer` new-ship bank).
+    VoiceNewShip,
     /// `GetGoody` picked up (the pickup jingle / voice line).
     GoodyCollected { kind: GoodyKind },
 }

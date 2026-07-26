@@ -26,13 +26,15 @@ impl Game {
             self.state = Screen::Intermission;
         }
 
+        // `LocalPlayerDead()` — the latch clears only in `respawn`
+        // (`AddPlayer`), so "dead" survives the wait for Enter and
+        // gates the NewShip stat reset.
         if self.local_player_dead {
-            self.local_player_dead = false;
             if self.ship.num_ships == 0 {
                 self.world.set_on_screen_rect(self.on_screen());
                 self.game_over_pause = 0;
                 self.state = Screen::GameOver;
-            } else {
+            } else if !self.need_add_player {
                 self.need_add_player = true;
             }
         }
@@ -62,6 +64,8 @@ impl Game {
             self.inter.total_bonus = 0;
             self.stats.reset(self.level as u32);
             self.stats.bad_guys_killed = self.enemies_alive() as i32;
+            // `DontSayCarnage` — the banked bonus isn't a killstreak.
+            self.prev_score = self.ship.score;
             self.state = Screen::Playing;
         } else {
             self.inter

@@ -39,6 +39,8 @@ pub struct WebAudio {
     sfx: SfxBuffers,
     loop_bufs: LoopBuffers,
     active: HashMap<LoopKind, AudioBufferSourceNode>,
+    /// The single voice channel — a new line stops the previous one.
+    voice: Option<AudioBufferSourceNode>,
     /// The soundtrack streams through a media element (tracks are
     /// megabytes — never decoded into AudioBuffers). `None` when the
     /// browser refused the element; the game just runs without music.
@@ -121,6 +123,7 @@ impl WebAudio {
             sfx,
             loop_bufs,
             active: HashMap::new(),
+            voice: None,
             music,
             swallow: Closure::new(|_| {}),
         })
@@ -195,6 +198,18 @@ impl AudioSink for WebAudio {
             if let Ok(promise) = el.play() {
                 let _ = promise.catch(&self.swallow);
             }
+        }
+    }
+
+    fn play_voice(&mut self, sfx: SfxId) {
+        // "don't play two at once" — stop the previous line.
+        if let Some(prev) = self.voice.take() {
+            let _ = web_sys::AudioScheduledSourceNode::stop(&prev);
+            let _ = prev.disconnect();
+        }
+        self.ensure_running();
+        if let Some(buf) = self.sfx.borrow().get(&sfx) {
+            self.voice = self.start_source(buf, false);
         }
     }
 

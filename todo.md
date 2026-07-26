@@ -14,9 +14,8 @@ work. If this file ever describes finished work, that's a bug. Use
 
 ## Phase 5 — Playable core (remaining)
 
-- `players.cpp` remainder: hurt/carnage/new-ship voice lines via
-  `PausePlayerPlay` + LocalRand timing; `PlayersCollidePlayers`
-  (deferred with net).
+- `players.cpp` remainder: `PlayersCollidePlayers` (deferred with
+  net).
 - Exact `UpdateAll` call order pass — align update/collide sequence
   with `AstroRock.cpp` line-for-line before demo replay (Phase 9
   depends on it).
@@ -30,8 +29,7 @@ work. If this file ever describes finished work, that's a bug. Use
   per-beat rising frequency ramp ((f>>6)+f from 22050) — needs
   live-frequency support on `AudioSink` loops.
 - Mixer policy from `SoundWin95.cpp` where it's audible: pan by screen
-  x (`GetPosRelCenter`) on one-shots, `PausedSoundPlayer` delay for
-  goody voice lines.
+  x (`GetPosRelCenter`) on one-shots.
 - Volume/mute controls (M key, sliders) — land with Phase 8 options
   UI and the settings store.
 

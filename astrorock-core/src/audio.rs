@@ -6,10 +6,11 @@
 //! WebAudio on wasm). Sinks receive one-shot [`SfxId`]s with the
 //! original's screen-relative pan, and start/stop [`LoopKind`]s.
 //!
-//! `GetGoody`'s sound pick is ported here: LocalRand(4) — 3-in-4 plays
-//! the generic pickup jingle, otherwise the goody's voice line (the
-//! original routed voices through `PausePlayerPlay` with a short
-//! delay; the delay is a polish item, tracked in todo.md).
+//! Voice lines (goody pickups, hurt/carnage/death/new-ship banks) run
+//! through [`VoicePlayer`] — the `PausedSoundPlayer` port: one pending
+//! slot with the original delays, newer lines replacing older ones,
+//! and playback cutting off whatever line still runs. All picks use
+//! LocalRand exactly like the C++ trigger sites (audio-only RNG).
 
 use crate::events::{Events, GameEvent};
 use crate::goodies::GoodyKind;
@@ -41,9 +42,54 @@ pub enum SfxId {
     VoiceTKill,
     VoiceKickAss,
     VoiceAhYah,
+    /// New-ship lines (`pNewPlayerSounds`).
+    VoiceLetsRock,
+    VoicePartyTime,
+    VoiceYah,
+    /// Death lines (`pDeadPlayerSounds`).
+    VoiceBumb,
+    VoiceHarsh,
+    VoiceDamn,
+    VoiceLearned,
+    /// Carnage lines (`pCarnagePlayerSounds`).
+    VoiceTakeThat,
+    VoiceBaby,
+    VoiceForRock,
+    VoiceWhoNext,
+    VoiceBringOn,
+    /// Hurt lines (`pHurtPlayerSounds`).
+    VoiceMyTurn,
+    VoiceOuch,
+    VoicePaint,
+    VoicePayback,
     /// The spawn shimmer (`rShimmerSnd`).
     Shimmer,
 }
+
+/// `pNewPlayerSounds` / `pDeadPlayerSounds` / `pCarnagePlayerSounds` /
+/// `pHurtPlayerSounds`, in the original array orders (indexed by
+/// LocalRand).
+pub const NEW_SHIP_VOICES: [SfxId; 3] =
+    [SfxId::VoiceLetsRock, SfxId::VoicePartyTime, SfxId::VoiceYah];
+pub const DEAD_VOICES: [SfxId; 4] = [
+    SfxId::VoiceBumb,
+    SfxId::VoiceHarsh,
+    SfxId::VoiceDamn,
+    SfxId::VoiceLearned,
+];
+pub const CARNAGE_VOICES: [SfxId; 5] = [
+    SfxId::VoiceTakeThat,
+    SfxId::VoiceBaby,
+    SfxId::VoiceForRock,
+    SfxId::VoiceWhoNext,
+    SfxId::VoiceBringOn,
+];
+pub const HURT_VOICES: [SfxId; 4] = [
+    SfxId::VoiceMyTurn,
+    SfxId::VoiceOuch,
+    SfxId::VoicePaint,
+    SfxId::VoicePayback,
+];
 
 impl SfxId {
     /// The `assets/sfx/` file stem for this effect.
@@ -66,6 +112,22 @@ impl SfxId {
             SfxId::VoiceTKill => "tkill",
             SfxId::VoiceKickAss => "kass",
             SfxId::VoiceAhYah => "ahyah",
+            SfxId::VoiceLetsRock => "letsrock",
+            SfxId::VoicePartyTime => "partytim",
+            SfxId::VoiceYah => "yah",
+            SfxId::VoiceBumb => "bumb",
+            SfxId::VoiceHarsh => "harsh",
+            SfxId::VoiceDamn => "damn",
+            SfxId::VoiceLearned => "learned",
+            SfxId::VoiceTakeThat => "takethat",
+            SfxId::VoiceBaby => "baby",
+            SfxId::VoiceForRock => "forrock",
+            SfxId::VoiceWhoNext => "whonext",
+            SfxId::VoiceBringOn => "bringon",
+            SfxId::VoiceMyTurn => "myturn",
+            SfxId::VoiceOuch => "ouch",
+            SfxId::VoicePaint => "paint",
+            SfxId::VoicePayback => "payback",
             SfxId::Shimmer => "shimmer",
         }
     }
@@ -100,6 +162,22 @@ impl SfxId {
             VoiceTKill => "tkill",
             VoiceKickAss => "kass",
             VoiceAhYah => "ahyah",
+            VoiceLetsRock => "letsrock",
+            VoicePartyTime => "partytim",
+            VoiceYah => "yah",
+            VoiceBumb => "bumb",
+            VoiceHarsh => "harsh",
+            VoiceDamn => "damn",
+            VoiceLearned => "learned",
+            VoiceTakeThat => "takethat",
+            VoiceBaby => "baby",
+            VoiceForRock => "forrock",
+            VoiceWhoNext => "whonext",
+            VoiceBringOn => "bringon",
+            VoiceMyTurn => "myturn",
+            VoiceOuch => "ouch",
+            VoicePaint => "paint",
+            VoicePayback => "payback",
             Shimmer => "shimmer",
         }
     }
@@ -124,6 +202,22 @@ impl SfxId {
             SfxId::VoiceTKill,
             SfxId::VoiceKickAss,
             SfxId::VoiceAhYah,
+            SfxId::VoiceLetsRock,
+            SfxId::VoicePartyTime,
+            SfxId::VoiceYah,
+            SfxId::VoiceBumb,
+            SfxId::VoiceHarsh,
+            SfxId::VoiceDamn,
+            SfxId::VoiceLearned,
+            SfxId::VoiceTakeThat,
+            SfxId::VoiceBaby,
+            SfxId::VoiceForRock,
+            SfxId::VoiceWhoNext,
+            SfxId::VoiceBringOn,
+            SfxId::VoiceMyTurn,
+            SfxId::VoiceOuch,
+            SfxId::VoicePaint,
+            SfxId::VoicePayback,
             SfxId::Shimmer,
         ]
     }
@@ -180,7 +274,54 @@ pub trait AudioSink {
     /// native 22050 Hz, pitch drop included. The game ramps the
     /// recovery, so sinks just apply whatever rate arrives.
     fn set_music_rate(&mut self, rate: f32);
+    /// Play a voice line on the single voice channel, stopping any
+    /// still-playing previous line ("don't play two at once" —
+    /// `PausedSoundPlayer`).
+    fn play_voice(&mut self, sfx: SfxId);
 }
+
+/// `PausedSoundPlayer`: one pending voice slot with a countdown —
+/// a newer request replaces whatever was waiting, and playback stops
+/// the previous line. `update` runs once per audio pump (the
+/// original called `PausePlayerUpdate` per render-loop frame).
+#[derive(Default)]
+pub struct VoicePlayer {
+    pending: Option<SfxId>,
+    pause: u32,
+}
+
+impl VoicePlayer {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// `PausePlayerPlay`.
+    pub fn play(&mut self, sfx: SfxId, pause: u32) {
+        self.pending = Some(sfx);
+        self.pause = pause;
+    }
+
+    /// `PausePlayerUpdate`.
+    pub fn update(&mut self, sink: &mut dyn AudioSink) {
+        if let Some(sfx) = self.pending {
+            if self.pause > 0 {
+                self.pause -= 1;
+                if self.pause == 0 {
+                    sink.play_voice(sfx);
+                    self.pending = None;
+                }
+            }
+        }
+    }
+}
+
+/// Voice delays, in pump ticks (`PLAYHURTPAUSE`, `PLAYCARNAGEPAUSE`,
+/// the KillPlayer/AddPlayer/GetGoody literals).
+pub const HURT_PAUSE: u32 = 45;
+pub const CARNAGE_PAUSE: u32 = 30;
+pub const DEAD_PAUSE: u32 = 30;
+pub const NEW_SHIP_PAUSE: u32 = 5;
+pub const GOODY_VOICE_PAUSE: u32 = 5;
 
 /// The `SkipMusic` playback rate: 7025 / 22050.
 pub const MUSIC_SLOW_RATE: f32 = 7025.0 / 22050.0;
@@ -190,9 +331,16 @@ pub const MUSIC_SLOW_RATE: f32 = 7025.0 / 22050.0;
 pub const MUSIC_RAMP_STEP: f32 = (1.0 - MUSIC_SLOW_RATE) / 60.0;
 
 /// Drain a frame's events into the sink. `local_rand` drives the
-/// goody sound pick exactly like `GetGoody` (visual/audio RNG — not
-/// part of the synced stream).
-pub fn dispatch(events: &mut Events, sink: &mut dyn AudioSink, local_rand: &mut Rand) {
+/// voice picks exactly like the original's LocalRand calls at the
+/// trigger sites (visual/audio RNG — not part of the synced stream);
+/// voice lines go through `voice` (`PausedSoundPlayer`) with their
+/// original delays.
+pub fn dispatch(
+    events: &mut Events,
+    sink: &mut dyn AudioSink,
+    local_rand: &mut Rand,
+    voice: &mut VoicePlayer,
+) {
     for event in events.drain() {
         match event {
             GameEvent::SfxBigExplosion { pan } => sink.play(SfxId::BigExplosion, pan),
@@ -214,7 +362,7 @@ pub fn dispatch(events: &mut Events, sink: &mut dyn AudioSink, local_rand: &mut 
                 if local_rand.rand(4) != 0 {
                     sink.play(SfxId::Goody, 0);
                 } else {
-                    let voice = match kind {
+                    let line = match kind {
                         GoodyKind::Shield | GoodyKind::Health => SfxId::VoiceBitchen,
                         GoodyKind::Rapid => SfxId::VoiceHose,
                         GoodyKind::Gun1 => SfxId::VoiceStick,
@@ -223,8 +371,20 @@ pub fn dispatch(events: &mut Events, sink: &mut dyn AudioSink, local_rand: &mut 
                         GoodyKind::Spread => SfxId::VoiceKickAss,
                         GoodyKind::Freeman => SfxId::VoiceAhYah,
                     };
-                    sink.play(voice, 0);
+                    voice.play(line, GOODY_VOICE_PAUSE);
                 }
+            }
+            GameEvent::VoiceHurt => {
+                voice.play(HURT_VOICES[local_rand.rand(4) as usize], HURT_PAUSE);
+            }
+            GameEvent::VoiceCarnage => {
+                voice.play(CARNAGE_VOICES[local_rand.rand(5) as usize], CARNAGE_PAUSE);
+            }
+            GameEvent::VoiceDead => {
+                voice.play(DEAD_VOICES[local_rand.rand(4) as usize], DEAD_PAUSE);
+            }
+            GameEvent::VoiceNewShip => {
+                voice.play(NEW_SHIP_VOICES[local_rand.rand(3) as usize], NEW_SHIP_PAUSE);
             }
         }
     }
@@ -239,6 +399,7 @@ mod tests {
         plays: Vec<(SfxId, i32)>,
         loops: Vec<(LoopKind, bool)>,
         music: Vec<bool>,
+        voices: Vec<SfxId>,
     }
 
     impl AudioSink for Recorder {
@@ -252,6 +413,9 @@ mod tests {
             self.music.push(on);
         }
         fn set_music_rate(&mut self, _rate: f32) {}
+        fn play_voice(&mut self, sfx: SfxId) {
+            self.voices.push(sfx);
+        }
     }
 
     #[test]
@@ -265,7 +429,8 @@ mod tests {
 
         let mut rec = Recorder::default();
         let mut lr = Rand::new();
-        dispatch(&mut ev, &mut rec, &mut lr);
+        let mut vp = VoicePlayer::new();
+        dispatch(&mut ev, &mut rec, &mut lr, &mut vp);
         assert_eq!(
             rec.plays,
             vec![
@@ -281,21 +446,43 @@ mod tests {
     fn goody_pick_is_jingle_or_voice() {
         let mut rec = Recorder::default();
         let mut lr = Rand::new();
+        let mut vp = VoicePlayer::new();
         for _ in 0..40 {
             let mut ev = Events::new();
             ev.push(GameEvent::GoodyCollected {
                 kind: GoodyKind::Rapid,
             });
-            dispatch(&mut ev, &mut rec, &mut lr);
+            dispatch(&mut ev, &mut rec, &mut lr, &mut vp);
+            // Flush the paused voice slot (5-tick delay).
+            for _ in 0..GOODY_VOICE_PAUSE {
+                vp.update(&mut rec);
+            }
         }
         let jingles = rec.plays.iter().filter(|(s, _)| *s == SfxId::Goody).count();
         let voices = rec
-            .plays
+            .voices
             .iter()
-            .filter(|(s, _)| *s == SfxId::VoiceHose)
+            .filter(|&&s| s == SfxId::VoiceHose)
             .count();
         assert_eq!(jingles + voices, 40);
         assert!(jingles > voices, "3-in-4 jingle bias");
+    }
+
+    #[test]
+    fn voice_player_delays_and_replaces() {
+        let mut rec = Recorder::default();
+        let mut vp = VoicePlayer::new();
+        vp.play(SfxId::VoiceOuch, 3);
+        vp.update(&mut rec);
+        vp.update(&mut rec);
+        assert!(rec.voices.is_empty(), "still counting down");
+        // A newer line replaces the pending one ("don't play two").
+        vp.play(SfxId::VoiceBumb, 2);
+        vp.update(&mut rec);
+        vp.update(&mut rec);
+        assert_eq!(rec.voices, vec![SfxId::VoiceBumb]);
+        vp.update(&mut rec);
+        assert_eq!(rec.voices.len(), 1, "slot cleared after playing");
     }
 
     #[test]

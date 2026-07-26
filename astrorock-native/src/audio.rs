@@ -44,6 +44,8 @@ pub struct RodioAudio {
     music_track: usize,
     /// Last applied playback rate (the speaker-gag slowdown).
     music_rate: f32,
+    /// The single voice channel — a new line stops the previous one.
+    voice: Option<Sink>,
 }
 
 impl RodioAudio {
@@ -101,6 +103,7 @@ impl RodioAudio {
             music_dir: MusicDir::Unprobed,
             music_track: 0,
             music_rate: 1.0,
+            voice: None,
         })
     }
 
@@ -205,6 +208,18 @@ impl AudioSink for RodioAudio {
             }
         }
         sink.play();
+    }
+
+    fn play_voice(&mut self, sfx: SfxId) {
+        // "don't play two at once" — stop the previous line.
+        if let Some(prev) = self.voice.take() {
+            prev.stop();
+        }
+        if let (Some(buf), Ok(sink)) = (self.buffers.get(&sfx), Sink::try_new(&self.handle)) {
+            sink.set_volume(SFX_VOLUME);
+            sink.append(buf.clone());
+            self.voice = Some(sink);
+        }
     }
 
     fn set_music_rate(&mut self, rate: f32) {

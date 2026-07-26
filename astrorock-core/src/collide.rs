@@ -8,7 +8,7 @@
 //! deal 1000 and take nothing; shots vanish on hit; bombs sail on).
 
 use crate::bombers::{Bombers, BOMBER_COLLIDE_DAMAGE};
-use crate::events::Events;
+use crate::events::{Events, GameEvent};
 use crate::explosion::Explosions;
 use crate::fastdeaths::{FastDeaths, FAST_DEATH_COLLIDE_DAMAGE};
 use crate::gloops::{Gloops, GLOOP_COLLIDE_DAMAGE};
@@ -51,9 +51,11 @@ pub fn damage_player(ship: &mut PlayerShip, damage: u32, ctx: &mut CollideCtx) -
     ctx.stats.untouched = 0;
     if damage >= ship.sprite.hp {
         ship.sprite.hp = 0;
-        // `KillPlayer`: survival bonus gone, a life lost.
+        // `KillPlayer`: survival bonus gone, a life lost, and a
+        // death one-liner through the paused voice slot.
         ctx.stats.survival = 0;
         ctx.stats.lives_lost += 1;
+        ctx.events.push(GameEvent::VoiceDead);
         ctx.explosions
             .explo_sprite(&mut ship.sprite, ctx.world, ctx.events);
         ship.remove_ship();
