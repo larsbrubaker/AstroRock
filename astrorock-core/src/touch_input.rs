@@ -14,6 +14,8 @@ use crate::game::{Game, Screen};
 /// both merge into the same lane).
 #[derive(Default, Clone, Copy, PartialEq, Eq)]
 pub struct TouchHeld {
+    pub left: bool,
+    pub right: bool,
     pub shield: bool,
     pub fire: bool,
     pub thrust: bool,
