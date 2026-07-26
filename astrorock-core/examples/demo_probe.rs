@@ -34,11 +34,20 @@ fn main() {
     );
 
     let mut fired_beats = 0usize;
+    let mut was_visible = true;
     for (i, &flags) in demo.key_flags.iter().enumerate() {
         if flags & astrorock_core::demo::FLAG_FIRE != 0 {
             fired_beats += 1;
         }
         game.demo_beat(flags);
+        if game.ship_visible() != was_visible {
+            was_visible = game.ship_visible();
+            println!(
+                "beat {i:5}: ship {} (sync={})",
+                if was_visible { "SPAWNED" } else { "DIED" },
+                game.rand_sync(),
+            );
+        }
         if i % 100 == 0 || i + 1 == demo.key_flags.len() {
             println!(
                 "beat {i:5}: sync={:6} check={:3} score={:5} visible={} fire_beats={}",
