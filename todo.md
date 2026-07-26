@@ -93,38 +93,53 @@ from differing readings of the broken method; SYNC is the reliable
 signal). The shipped-game backup `C:\Development\Backups\2097-05`
 referenced in CLAUDE.md does NOT exist on this machine.
 
-- ROOT CAUSE, NARROWED: per-beat NetRand sync matches the C++
-  EXACTLY for long stretches (demo00: 353 beats, demo01: 147,
-  demo02: 88), then diverges at a discrete collision event — at
-  demo00 beat 353 the C++ kills a rock (speaker collision, +8 draws,
-  Explosions/Rocks checks jump) that Rust kills at beat 356. Update
-  order and RNG logic are right; the drift is collision TIMING from
-  float position/trig paths. Next: dump per-rock and speaker
-  positions/deltas around beats 340-356 on both sides (the traces
-  in AstroRock-headless are the baseline) and find the first f32
-  that differs; suspects are trig tables, wrap math, or an
-  expression shape in sprite movement.
-- Re-bless the golden after parity; wire the C++ trace diff into a
-  manual verification script (compare.ps1 exists in the headless
-  dir).
-- Re-bless the golden once 1997 parity is confirmed; the difficulty
-  audit (rock speed) is settled by the same event.
-- Attract mode (demo playback from the title screen) — after parity.
+STRATEGY PIVOT (Lars, 2026-07-26): shipped demos become CAPTURES,
+not simulations. Capture a faithful C++ run per demo — per beat:
+every visible sprite's (system, subtype, animation frame, x, y),
+the sounds triggered, and the statbar/score line — and the Rust
+side plays that back like a compressed video. Demos then survive
+any future gameplay changes/improvements; a Rust recorder writing
+the same format later makes NEW demos. Bit-exact 1997 parity stops
+being a demo requirement (the determinism substrate stays healthy
+for future net play via the our-determinism golden).
+
+KNOWN BLOCKER: the rebuilt C++ replay's pilot ALSO dies — all three
+traced demos ran exactly +30 beats past their recorded length (the
+`!visible * 30` grace), so modern MSVC x87 codegen diverges from
+MSVC 4.x too. A compiler-flag sweep (/Od, /fp:fast, /O1, x87
+control-word variants) is testing whether some combo reproduces
+1997 — the fitness signal is a demo finishing at EXACTLY its
+recorded length with the ship alive. Fallback if none does: restore
+the shipped-exe backup (missing from this machine) and capture from
+the real binary via instrumentation.
+
+- Faithful C++ run: finish the flag sweep; if green, extend the
+  headless driver to dump the capture stream for all 27+ demos.
+- Capture format: compact + versioned (delta/RLE per beat); decided
+  when the first real dump exists.
+- Rust capture player: renders sprites at recorded positions and
+  fires recorded sounds — no sim; replaces sim-replay for the Demo
+  button and the attract mode. Keep `tests/demo_replay.rs` (the
+  our-determinism golden) as the sim regression suite.
+- Rust capture recorder (later): record new/improved demos in the
+  same format.
+- The sync-divergence root cause (collision timing, first f32 diff
+  around demo00 beats 340-356) is now OPTIONAL polish for the sim's
+  own fidelity, not a demo blocker.
 
 ## Phase 10 — Polish + ship
 
 - Gamma/fade options, windowed/fullscreen toggle.
 - Pages deploy verified on desktop + phone; README hero screenshot.
 
-## Tuning (after Phase 9 proves the baseline — deliberate departures)
+## Tuning (unblocked once demos are captures — deliberate departures)
 
 - Early-level rock speed: feels fast vs memory; velocity math is
-  verified faithful, so any change is a modernization knob, decided
-  once demos replay bit-exact.
+  verified faithful, so any change is a modernization knob. The
+  capture pivot removes the replay-validity constraint.
 - Rock splits: children currently get fully random velocity exactly
   like the C++ (`NetRandAbout0`, no parent term) — Lars wants them to
-  inherit some parent momentum. Add as a tunable after the demo suite
-  locks the faithful baseline (a toggle keeps replays valid).
+  inherit some parent momentum. Also unblocked by the capture pivot.
 
 ## Deferred (not scheduled)
 
