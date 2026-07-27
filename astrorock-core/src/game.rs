@@ -681,6 +681,16 @@ impl Game {
                 LoopKind::Shield,
                 self.sfx_on && alive && self.ship.shield_on,
             );
+            // The spikeball charge whines, one per ball, pitch rising
+            // with the simulated `SetFrequency` ramp.
+            for i in 0..crate::spikeballs::MAX_SPIKEBALLS {
+                let rate = if self.sfx_on && playing {
+                    self.spikeballs.charge_rate(i)
+                } else {
+                    None
+                };
+                sink.set_charge(i, rate);
+            }
             // The original starts the music stream at init and restarts
             // it from the main loop forever — attract mode included.
             sink.set_music(self.music_on);

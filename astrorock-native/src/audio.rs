@@ -46,6 +46,9 @@ pub struct RodioAudio {
     music_rate: f32,
     /// The single voice channel — a new line stops the previous one.
     voice: Option<Sink>,
+    /// Per-spikeball charge-whine loops (created on demand, dropped
+    /// on stop so the next charge restarts the sample).
+    charges: Vec<Option<Sink>>,
     /// Config Sound slider fractions on top of the headroom.
     master: f32,
     music_vol: f32,
@@ -107,6 +110,7 @@ impl RodioAudio {
             music_track: 0,
             music_rate: 1.0,
             voice: None,
+            charges: Vec::new(),
             master: 1.0,
             music_vol: 1.0,
         })
@@ -245,8 +249,37 @@ impl AudioSink for RodioAudio {
         if let Some(sink) = &self.voice {
             sink.set_volume(SFX_VOLUME * master);
         }
+        for sink in self.charges.iter().flatten() {
+            sink.set_volume(SFX_VOLUME * master);
+        }
         if let Some(sink) = &self.music {
             sink.set_volume(MUSIC_VOLUME * music);
+        }
+    }
+
+    fn set_charge(&mut self, slot: usize, rate: Option<f32>) {
+        if self.charges.len() <= slot {
+            self.charges.resize_with(slot + 1, || None);
+        }
+        match rate {
+            Some(rate) => {
+                if self.charges[slot].is_none() {
+                    if let Ok(sink) = Sink::try_new(&self.handle) {
+                        sink.set_volume(self.sfx_gain());
+                        if let Ok(dec) =
+                            Decoder::new(Cursor::new(astrorock_core::audio::CHARGE_BYTES))
+                        {
+                            sink.append(dec.buffered().repeat_infinite());
+                        }
+                        self.charges[slot] = Some(sink);
+                    }
+                }
+                if let Some(sink) = &self.charges[slot] {
+                    sink.set_speed(rate);
+                }
+            }
+            // Drop stops playback; the next charge starts fresh.
+            None => self.charges[slot] = None,
         }
     }
 

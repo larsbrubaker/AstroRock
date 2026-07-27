@@ -27,9 +27,6 @@ work. If this file ever describes finished work, that's a bug. Use
 
 ## Phase 7 — Audio (remaining)
 
-- Spikeball charge whine: looping rSpikeBallChargeSnd with the
-  per-beat rising frequency ramp ((f>>6)+f from 22050) — needs
-  live-frequency support on `AudioSink` loops.
 - Mixer policy from `SoundWin95.cpp` where it's audible: pan by screen
   x (`GetPosRelCenter`) on one-shots.
 
