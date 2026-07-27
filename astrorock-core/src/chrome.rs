@@ -33,9 +33,12 @@ const FA_ROTATE_LEFT: &str = "\u{f0e2}";
 const FA_ROTATE_RIGHT: &str = "\u{f01e}";
 const FA_ROCKET: &str = "\u{f135}";
 
-/// The mobile virtual-gamepad rects: rotate-left / rotate-right
-/// under the left thumb; fire + thrust (with shield above fire)
-/// under the right; plus the menu (Esc) tap target.
+/// The mobile virtual-gamepad HIT areas: rotate-left / rotate-right
+/// under the left thumb; thrust + fire (with shield above fire)
+/// under the right; plus the menu (Esc) tap target. The L/R/T/F
+/// rects are much larger than the drawn plates — each fills its
+/// corner zone out to the screen edges and the midline to its
+/// neighbor, so a fat-fingered press near a button still lands.
 pub struct TouchLayout {
     pub left_btn: GuiRect,
     pub right_btn: GuiRect,
@@ -162,6 +165,7 @@ pub(crate) struct TouchRects {
     pub col_w: f64,
     pub right_x: f64,
     pub zone_h: f64,
+    /// Drawn plates.
     pub left: GuiRect,
     pub right: GuiRect,
     pub fire: GuiRect,
@@ -171,6 +175,12 @@ pub(crate) struct TouchRects {
     pub menu: GuiRect,
     pub music: GuiRect,
     pub sfx: GuiRect,
+    /// Expanded hit areas for the four hold buttons (the plates are
+    /// just the visuals — the touch surface owns the corner).
+    pub left_hit: GuiRect,
+    pub right_hit: GuiRect,
+    pub thrust_hit: GuiRect,
+    pub fire_hit: GuiRect,
 }
 
 /// Compute the touch layout. The playfield always wins: max HEIGHT
@@ -238,6 +248,20 @@ pub(crate) fn touch_rects(w: f64, h: f64) -> TouchRects {
     let fs = GuiRect::new(rcx - small - 4.0, row_fs, small, small);
     let menu = GuiRect::new(rcx + 4.0, row_fs, small, small);
 
+    // Expanded hit areas: from the screen bottom to a generous
+    // overshoot above the plates, split at the pair midline, out to
+    // the zone edges. Fire stops just under the shield plate.
+    let overshoot = 40.0;
+    let mid_l = lx0 + pair + pair_gap / 2.0;
+    let l_top = (PAD + pair + overshoot).min(zone_h);
+    let left_hit = GuiRect::new(left_x, 0.0, mid_l - left_x, l_top);
+    let right_hit = GuiRect::new(mid_l, 0.0, left_x + col_w - mid_l, l_top);
+    let mid_r = rx0 + pair + pair_gap / 2.0;
+    let t_top = (PAD + pair + overshoot).min(row_fs - 2.0).min(zone_h);
+    let f_top = (PAD + pair + overshoot).min(shield.y - 2.0).min(zone_h);
+    let thrust_hit = GuiRect::new(right_x, 0.0, mid_r - right_x, t_top);
+    let fire_hit = GuiRect::new(mid_r, 0.0, right_x + col_w - mid_r, f_top);
+
     TouchRects {
         game: (dx, dy, dw, dh),
         landscape,
@@ -253,6 +277,10 @@ pub(crate) fn touch_rects(w: f64, h: f64) -> TouchRects {
         menu,
         music,
         sfx,
+        left_hit,
+        right_hit,
+        thrust_hit,
+        fire_hit,
     }
 }
 
@@ -310,10 +338,10 @@ fn paint_touch(
         sfx_btn: r.sfx,
         fullscreen_btn: r.fs,
         touch: Some(TouchLayout {
-            left_btn: r.left,
-            right_btn: r.right,
-            fire_btn: r.fire,
-            thrust_btn: r.thrust,
+            left_btn: r.left_hit,
+            right_btn: r.right_hit,
+            fire_btn: r.fire_hit,
+            thrust_btn: r.thrust_hit,
             shield_btn: r.shield,
             menu_btn: r.menu,
         }),
@@ -451,11 +479,14 @@ mod tests {
             (568.0, 320.0), // small landscape
         ] {
             let r = touch_rects(w, h);
+            // The HIT areas are the real interaction surfaces — they
+            // must not collide with each other, the small buttons,
+            // the shield, or the game.
             let rects = [
-                ("left", &r.left),
-                ("right", &r.right),
-                ("fire", &r.fire),
-                ("thrust", &r.thrust),
+                ("left", &r.left_hit),
+                ("right", &r.right_hit),
+                ("fire", &r.fire_hit),
+                ("thrust", &r.thrust_hit),
                 ("shield", &r.shield),
                 ("fs", &r.fs),
                 ("menu", &r.menu),
