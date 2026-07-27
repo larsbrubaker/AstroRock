@@ -151,12 +151,13 @@ fn icon_button(ctx: &mut dyn DrawCtx, rect: &GuiRect, glyph: &str, on: bool, ico
         Color::from_rgb8(110, 118, 134)
     });
     ctx.set_font(icons.clone());
-    ctx.set_font_size(18.0);
-    // FA glyphs are near-square: eyeball-center in the plate.
+    // The glyph scales with the plate (FA glyphs are near-square).
+    let glyph_px = (rect.height * 0.5).clamp(14.0, 28.0);
+    ctx.set_font_size(glyph_px);
     ctx.fill_text(
         glyph,
-        rect.x + rect.width / 2.0 - 9.0,
-        rect.y + rect.height / 2.0 - 8.0,
+        rect.x + rect.width / 2.0 - glyph_px / 2.0,
+        rect.y + rect.height / 2.0 - glyph_px * 0.44,
     );
 
     if !on {
@@ -277,7 +278,8 @@ pub(crate) fn touch_rects(w: f64, h: f64, size: TouchSize) -> TouchRects {
     // Plate size comes from the user's S/M/L/XL preset. Plates are
     // TRANSLUCENT and may spill over the playfield, so the columns
     // no longer cap them — only the screen height does.
-    let small = 36.0_f64.min(((col_w - 3.0 * PAD) / 2.0).max(20.0));
+    // Small buttons sized for fingers, not mouse pointers.
+    let small = 50.0_f64.min(((col_w - 3.0 * PAD) / 2.0).max(24.0));
     let pair_gap = 10.0;
     // Size from the preset, capped twice: the right-side stack
     // (fire + shield) must clear the small rows above it, and all
@@ -322,8 +324,8 @@ pub(crate) fn touch_rects(w: f64, h: f64, size: TouchSize) -> TouchRects {
     // The size gear at the top of the LEFT side (unused space), its
     // dropdown rows opening downward beneath it.
     let gear = GuiRect::new(lcx - small / 2.0, zone_h - PAD - small, small, small);
-    let opt_h = 34.0;
-    let opt_w = 64.0_f64.max(small);
+    let opt_h = 42.0;
+    let opt_w = 76.0_f64.max(small);
     let mut size_opts = [GuiRect::default(); 4];
     for (i, slot) in size_opts.iter_mut().enumerate() {
         slot.x = lcx - opt_w / 2.0;
@@ -374,17 +376,10 @@ pub(crate) fn touch_rects(w: f64, h: f64, size: TouchSize) -> TouchRects {
     }
 }
 
-#[allow(clippy::too_many_arguments)]
-fn paint_touch(
-    ctx: &mut dyn DrawCtx,
-    w: f64,
-    h: f64,
-    music_on: bool,
-    sfx_on: bool,
-    ui: TouchUi,
-    icons: &Arc<Font>,
-    text: &Arc<Font>,
-) -> ChromeLayout {
+/// The touch BACKGROUND pass: zone panels only. The buttons draw in
+/// [`paint_touch_overlay`] AFTER the caller blits the game image, so
+/// the translucent plates sit ON TOP of the playfield.
+fn paint_touch(ctx: &mut dyn DrawCtx, w: f64, h: f64, ui: TouchUi) -> ChromeLayout {
     let panel_bg = Color::from_rgb8(24, 28, 36);
     let edge = Color::from_rgb8(56, 63, 79);
     let r = touch_rects(w, h, ui.size);
@@ -409,6 +404,39 @@ fn paint_touch(
     }
     ctx.fill();
 
+    ChromeLayout {
+        game: r.game,
+        music_btn: r.music,
+        sfx_btn: r.sfx,
+        fullscreen_btn: r.fs,
+        touch: Some(TouchLayout {
+            left_btn: r.left_hit,
+            right_btn: r.right_hit,
+            fire_btn: r.fire_hit,
+            thrust_btn: r.thrust_hit,
+            shield_btn: r.shield,
+            menu_btn: r.menu,
+            gear_btn: r.gear,
+            size_opts: ui.size_menu.then_some(r.size_opts),
+        }),
+    }
+}
+
+/// The touch OVERLAY pass — every control, drawn on top of the game
+/// image the caller just blitted.
+#[allow(clippy::too_many_arguments)]
+pub fn paint_touch_overlay(
+    ctx: &mut dyn DrawCtx,
+    w: f64,
+    h: f64,
+    music_on: bool,
+    sfx_on: bool,
+    ui: TouchUi,
+    icons: &Arc<Font>,
+    text: &Arc<Font>,
+) {
+    let r = touch_rects(w, h, ui.size);
+
     touch_button(ctx, &r.left, FA_ROTATE_LEFT, ui.left, icons);
     touch_button(ctx, &r.right, FA_ROTATE_RIGHT, ui.right, icons);
     touch_button(ctx, &r.fire, FA_CROSSHAIRS, ui.fire, icons);
@@ -428,8 +456,7 @@ fn paint_touch(
     // The size gear + its S/M/L/XL dropdown.
     icon_button(ctx, &r.gear, FA_GEAR, true, icons);
     if ui.size_menu {
-        for (i, (opt, preset)) in r.size_opts.iter().zip(TouchSize::ALL).enumerate() {
-            let _ = i;
+        for (opt, preset) in r.size_opts.iter().zip(TouchSize::ALL) {
             let current = preset == ui.size;
             ctx.set_fill_color(if current {
                 Color::from_rgb8(58, 70, 96)
@@ -448,41 +475,23 @@ fn paint_touch(
             ctx.fill();
             ctx.set_fill_color(Color::from_rgb8(214, 222, 240));
             ctx.set_font(text.clone());
-            ctx.set_font_size(16.0);
+            ctx.set_font_size(20.0);
             let label = preset.label();
-            let lw = label.len() as f64 * 9.0;
+            let lw = label.len() as f64 * 11.0;
             ctx.fill_text(
                 label,
                 opt.x + (opt.width - lw) / 2.0,
-                opt.y + opt.height / 2.0 - 7.0,
+                opt.y + opt.height / 2.0 - 9.0,
             );
         }
-    }
-
-    ChromeLayout {
-        game: r.game,
-        music_btn: r.music,
-        sfx_btn: r.sfx,
-        fullscreen_btn: r.fs,
-        touch: Some(TouchLayout {
-            left_btn: r.left_hit,
-            right_btn: r.right_hit,
-            fire_btn: r.fire_hit,
-            thrust_btn: r.thrust_hit,
-            shield_btn: r.shield,
-            menu_btn: r.menu,
-            gear_btn: r.gear,
-            size_opts: ui.size_menu.then_some(r.size_opts),
-        }),
     }
 }
 
 /// Paint backdrop, rail/bar, buttons, and the frame around the (still
 /// unpainted) game rect; the caller blits the game image into
-/// `layout.game` afterwards. `touch` enables the mobile
-/// virtual-gamepad layout, lighting held buttons; `text` renders the
-/// size dropdown's labels.
-#[allow(clippy::too_many_arguments)]
+/// `layout.game` afterwards. With `touch` set this pass draws ONLY
+/// the zone panels — the controls come from [`paint_touch_overlay`]
+/// after the game image, so translucent plates sit on top of it.
 pub fn paint(
     ctx: &mut dyn DrawCtx,
     w: f64,
@@ -491,7 +500,6 @@ pub fn paint(
     sfx_on: bool,
     touch: Option<TouchUi>,
     icons: &Arc<Font>,
-    text: &Arc<Font>,
 ) -> ChromeLayout {
     let backdrop = Color::from_rgb8(11, 13, 18);
     let panel_bg = Color::from_rgb8(24, 28, 36);
@@ -503,7 +511,7 @@ pub fn paint(
     ctx.fill();
 
     if let Some(ui) = touch {
-        return paint_touch(ctx, w, h, music_on, sfx_on, ui, icons, text);
+        return paint_touch(ctx, w, h, ui);
     }
 
     // Side rail whenever full-height aspect-fit leaves the slack for
