@@ -23,6 +23,14 @@ const MAX_NAME: usize = 15;
 const HIGH_TOP: i32 = 250;
 const HIGH_SKIP: i32 = 24;
 
+/// The arcade-entry wheel: letters, digits, punctuation, and `<`
+/// (rub out). FIRE on a character appends it; THRUST finishes.
+const ARCADE_CHARS: &[char] = &[
+    'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S',
+    'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ' ', '.',
+    '-', '!', '<',
+];
+
 /// `ppHelpText1`, verbatim — 4 lines per subject in showcase order.
 #[rustfmt::skip]
 const HELP_TEXT: [&str; NUM_HELP_SUBJECTS * HELP_LINES] = [
@@ -104,11 +112,22 @@ impl Menu {
                 BlitMode::Transparent0,
             );
         }
-        // `CursorFlashOn = !CursorFlashOn` per update.
-        let name = if self.flash % 2 == 0 {
-            format!("-{}-", self.new_high_text)
+        // `CursorFlashOn = !CursorFlashOn` per update. In arcade
+        // (touch) mode the scrolling letter rides the end of the
+        // name, blinking so it reads as a cursor, with a hint line.
+        let shown = if self.arcade_active {
+            if self.flash % 16 < 10 {
+                format!("{}{}", self.new_high_text, ARCADE_CHARS[self.entry_char])
+            } else {
+                format!("{} ", self.new_high_text)
+            }
         } else {
-            format!(" {} ", self.new_high_text)
+            self.new_high_text.clone()
+        };
+        let name = if self.flash % 2 == 0 {
+            format!("-{shown}-")
+        } else {
+            format!(" {shown} ")
         };
         self.font.print(
             screen,
@@ -118,6 +137,16 @@ impl Menu {
             Justify::Center,
             BlitMode::Transparent0,
         );
+        if self.arcade_active {
+            self.font.print(
+                screen,
+                320,
+                5 * 15 + 260,
+                "TURN: pick letter   FIRE: enter   THRUST: done",
+                Justify::Center,
+                BlitMode::Transparent0,
+            );
+        }
     }
 
     /// The Net Rock placeholder (where `STATE_NONETPLAY` printed its
@@ -145,6 +174,46 @@ impl Menu {
         self.new_high_text.clear();
         self.page = Page::NewHighScore;
         self.from_game = false;
+        self.entry_char = 0;
+        self.arcade_active = false;
+    }
+
+    /// Arcade-style entry for touch (no keyboard): L/R scroll the
+    /// current letter, FIRE enters it ('<' rubs one out), THRUST
+    /// finishes the name. Engaged by the first edge so keyboard
+    /// users never see the scroll cursor.
+    pub fn arcade_edges(
+        &mut self,
+        left: bool,
+        right: bool,
+        fire: bool,
+        thrust: bool,
+        events: &mut Events,
+    ) {
+        if self.page != Page::NewHighScore || !(left || right || fire || thrust) {
+            return;
+        }
+        self.arcade_active = true;
+        let n = ARCADE_CHARS.len();
+        if left {
+            self.entry_char = (self.entry_char + n - 1) % n;
+        }
+        if right {
+            self.entry_char = (self.entry_char + 1) % n;
+        }
+        if fire {
+            let c = ARCADE_CHARS[self.entry_char];
+            if c == '<' {
+                self.new_high_text.pop();
+            } else if self.new_high_text.len() < MAX_NAME {
+                self.new_high_text.push(c);
+            }
+            events.push(crate::events::GameEvent::SfxClicked);
+        }
+        if thrust {
+            events.push(crate::events::GameEvent::SfxClicked);
+            self.commit_high_score();
+        }
     }
 
     /// `PressedContinue` on the entry page: add, sort, persist, show

@@ -37,6 +37,8 @@ pub struct Settings {
     /// `GlobalHighScores` — 5 entries, name + score, sorted
     /// descending (`HSListInit(5,15)`; fresh slots are "EMPTY"/0).
     pub high_scores: Vec<(String, u32)>,
+    /// Touch-plate size preset ("S"/"M"/"L"/"XL").
+    pub touch_size: String,
 }
 
 /// The 1997 fresh-install table.
@@ -60,6 +62,7 @@ impl Default for Settings {
             master_volume: 1.0,
             music_volume: 1.0,
             high_scores: default_high_scores(),
+            touch_size: "M".to_string(),
         }
     }
 }
@@ -169,6 +172,7 @@ impl crate::game::Game {
             scores.truncate(5);
             scores.sort_by_key(|e| std::cmp::Reverse(e.1));
             self.menu.high_scores = scores;
+            self.touch_size = crate::chrome::TouchSize::from_label(&s.touch_size);
         }
         self.settings_store = Some(store);
     }
@@ -186,6 +190,7 @@ impl crate::game::Game {
         s.music_on = self.music_on;
         s.sfx_on = self.sfx_on;
         s.high_scores = self.menu.high_scores.clone();
+        s.touch_size = self.touch_size.label().to_string();
         store.save(&s.to_json());
     }
 

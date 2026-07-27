@@ -25,10 +25,13 @@ pub struct TouchHeld {
 
 impl Game {
     /// Update the virtual-gamepad hold state (widget, per frame). A
-    /// fresh FIRE press also acts as Start/continue — the touch path
-    /// through the press-Enter gates (spawn, tally skip, game over).
+    /// fresh FIRE or THRUST press also acts as Start/continue — the
+    /// touch path through the press-Enter gates (spawn, tally skip,
+    /// game over); both read as "go" under a thumb.
     pub fn set_touch(&mut self, touch: TouchHeld) {
-        if touch.fire && !self.touch.fire && self.state != Screen::Menu {
+        let fresh_fire = touch.fire && !self.touch.fire;
+        let fresh_thrust = touch.thrust && !self.touch.thrust;
+        if (fresh_fire || fresh_thrust) && self.state != Screen::Menu {
             self.enter_pressed = true;
         }
         self.touch = touch;

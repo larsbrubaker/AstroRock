@@ -166,6 +166,10 @@ pub struct Menu {
     pub(crate) pending_score: u32,
     /// Menu beat counter (`CursorFlashOn` for the name prompt).
     pub(crate) flash: u32,
+    /// Arcade name entry (mobile): index of the letter the L/R
+    /// buttons are scrolling; engaged after the first touch edge.
+    pub(crate) entry_char: usize,
+    pub(crate) arcade_active: bool,
 }
 
 impl Menu {
@@ -223,6 +227,8 @@ impl Menu {
             new_high_text: String::new(),
             pending_score: 0,
             flash: 0,
+            entry_char: 0,
+            arcade_active: false,
         }
     }
 
@@ -610,6 +616,7 @@ impl Menu {
                     "         Art & Music:   Chad Max      ",
                     "  Explosions & Rocks:   Tony Bowren   ",
                     "        Lots of Help:   Scott Campbell",
+                    "            Net Rock:   James C. Smith",
                     "                 DOS:   Bill Heineman ",
                     "  Businesslike Stuff:   Steven Parsons",
                 ];
