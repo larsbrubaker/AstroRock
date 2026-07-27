@@ -153,6 +153,8 @@ pub struct Game {
     /// otherwise re-enter instantly, straight into whatever killed
     /// them. Level-start spawns are NOT delayed.
     pub(crate) respawn_delay: i32,
+    /// Touch-plate size preset (the gear dropdown; persisted).
+    pub touch_size: crate::chrome::TouchSize,
 }
 
 /// One second at 30 Hz — the post-death respawn lockout.
@@ -246,6 +248,25 @@ impl Game {
             touch: TouchHeld::default(),
             tilt_target: None,
             respawn_delay: 0,
+            touch_size: crate::chrome::TouchSize::default(),
+        }
+    }
+
+    /// The gear dropdown picked a plate size — apply and persist.
+    pub fn set_touch_size(&mut self, size: crate::chrome::TouchSize) {
+        if size != self.touch_size {
+            self.touch_size = size;
+            self.save_settings();
+        }
+    }
+
+    /// Fresh touch-press EDGES, routed to menu-side consumers — the
+    /// arcade-style high-score name entry (L/R scroll the letter,
+    /// FIRE enters it, THRUST finishes).
+    pub fn touch_edges(&mut self, left: bool, right: bool, fire: bool, thrust: bool) {
+        if self.state == Screen::Menu {
+            self.menu
+                .arcade_edges(left, right, fire, thrust, &mut self.events);
         }
     }
 

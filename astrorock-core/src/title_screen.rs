@@ -34,11 +34,17 @@ pub struct TitleScreen {
     /// Where the game surface landed last paint (widget coords) —
     /// translates mouse events into 640x480 game coordinates.
     game_rect: (f64, f64, f64, f64),
+    /// Text font for the size dropdown's labels.
+    text_font: Arc<Font>,
     /// Mobile virtual-gamepad rects from the last paint — polled
     /// against the active fingers each frame.
     touch_layout: Option<chrome::TouchLayout>,
     /// Gamepad buttons last frame — Start/Select fire on the edge.
     prev_pad_buttons: u32,
+    /// Touch holds last frame — edges drive the arcade name entry.
+    prev_touch: crate::touch_input::TouchHeld,
+    /// The gear's S/M/L/XL dropdown is open.
+    size_menu_open: bool,
 }
 
 impl TitleScreen {
@@ -68,8 +74,11 @@ impl TitleScreen {
             sfx_btn: GuiRect::default(),
             fullscreen_btn: GuiRect::default(),
             game_rect: (0.0, 0.0, 1.0, 1.0),
+            text_font: crate::load_default_font(),
             touch_layout: None,
             prev_pad_buttons: 0,
+            prev_touch: crate::touch_input::TouchHeld::default(),
+            size_menu_open: false,
         }
     }
 
@@ -190,6 +199,14 @@ impl Widget for TitleScreen {
                 },
                 None => crate::touch_input::TouchHeld::default(),
             };
+            // Fresh press EDGES drive the arcade name entry.
+            self.game.touch_edges(
+                held.left && !self.prev_touch.left,
+                held.right && !self.prev_touch.right,
+                held.fire && !self.prev_touch.fire,
+                held.thrust && !self.prev_touch.thrust,
+            );
+            self.prev_touch = held;
             self.game.set_touch(held);
             Some(chrome::TouchUi {
                 left: held.left,
@@ -197,6 +214,8 @@ impl Widget for TitleScreen {
                 fire: held.fire,
                 thrust: held.thrust,
                 shield: held.shield,
+                size: self.game.touch_size,
+                size_menu: self.size_menu_open,
             })
         } else {
             // Desktop: no touch chrome, but a connected pad still
@@ -233,6 +252,7 @@ impl Widget for TitleScreen {
             self.game.sfx_on,
             touch_ui,
             &self.icons,
+            &self.text_font,
         );
         self.music_btn = layout.music_btn;
         self.sfx_btn = layout.sfx_btn;
@@ -281,6 +301,26 @@ impl Widget for TitleScreen {
                 }
             }
             Event::MouseDown { pos, .. } => {
+                // The size gear + its dropdown come first: an open
+                // dropdown eats the click either way.
+                if let Some(t) = &self.touch_layout {
+                    if chrome::hit(&t.gear_btn, pos.x, pos.y) {
+                        self.size_menu_open = !self.size_menu_open;
+                        return EventResult::Consumed;
+                    }
+                    if self.size_menu_open {
+                        if let Some(opts) = &t.size_opts {
+                            for (opt, preset) in opts.iter().zip(chrome::TouchSize::ALL) {
+                                if chrome::hit(opt, pos.x, pos.y) {
+                                    self.game.set_touch_size(preset);
+                                    break;
+                                }
+                            }
+                        }
+                        self.size_menu_open = false;
+                        return EventResult::Consumed;
+                    }
+                }
                 if chrome::hit(&self.music_btn, pos.x, pos.y) {
                     self.game.toggle_music();
                     EventResult::Consumed
