@@ -282,10 +282,11 @@ pub(crate) fn touch_rects(w: f64, h: f64, size: TouchSize) -> TouchRects {
     let small = 50.0_f64.min(((col_w - 3.0 * PAD) / 2.0).max(24.0));
     let pair_gap = 10.0;
     // Size from the preset, capped twice: the right-side stack
-    // (fire + shield) must clear the small rows above it, and all
-    // four bottom plates must fit across the window with clearance
-    // between the clusters.
-    let stack_cap = (zone_h - 2.0 * PAD - 2.0 * (small + GAP) - GAP - 2.0) / 2.0;
+    // (fire + shield) must fit the zone height, and all four bottom
+    // plates must fit across the window with clearance between the
+    // clusters. (The small buttons live top-LEFT, out of both
+    // constraints.)
+    let stack_cap = (zone_h - 2.0 * PAD - GAP - 2.0) / 2.0;
     let row_cap = (w - 2.0 * PAD - 2.0 * pair_gap - 24.0) / 4.0;
     let pair = size.px().min(stack_cap).min(row_cap).max(30.0);
 
@@ -302,9 +303,8 @@ pub(crate) fn touch_rects(w: f64, h: f64, size: TouchSize) -> TouchRects {
     let right = GuiRect::new(lx0 + pair + pair_gap, PAD, pair, pair);
 
     // `[T][F]` row in the bottom-right corner (fire outboard at the
-    // very corner), shield above fire; the small buttons (mutes on
-    // top, then fullscreen + Esc) anchor to the TOP of the right
-    // side so a firing thumb can't graze them.
+    // very corner), shield above fire — the stack owns the full zone
+    // height now that the small buttons live elsewhere.
     let rcx = right_x + col_w / 2.0;
     let fx0 = if total + 2.0 * PAD <= col_w {
         rcx + total / 2.0 - pair
@@ -314,21 +314,25 @@ pub(crate) fn touch_rects(w: f64, h: f64, size: TouchSize) -> TouchRects {
     let fire = GuiRect::new(fx0, PAD, pair, pair);
     let thrust = GuiRect::new(fx0 - pair_gap - pair, PAD, pair, pair);
     let shield = GuiRect::new(fire.x, PAD + pair + GAP, pair, pair);
-    let row_mutes = zone_h - PAD - small;
-    let row_fs = row_mutes - GAP - small;
-    let music = GuiRect::new(rcx - small - 4.0, row_mutes, small, small);
-    let sfx = GuiRect::new(rcx + 4.0, row_mutes, small, small);
-    let fs = GuiRect::new(rcx - small - 4.0, row_fs, small, small);
-    let menu = GuiRect::new(rcx + 4.0, row_fs, small, small);
 
-    // The size gear at the top of the LEFT side (unused space), its
-    // dropdown rows opening downward beneath it.
-    let gear = GuiRect::new(lcx - small / 2.0, zone_h - PAD - small, small, small);
+    // All the small buttons form one TOP-LEFT row — far from the
+    // firing thumb AND out of the stack's way: gear, back (Esc),
+    // fullscreen, music, sfx. Translucent-era placement: the row may
+    // sit over the playfield's top edge.
+    let row_y = zone_h - PAD - small;
+    let srow = |i: f64| GuiRect::new(left_x + PAD + i * (small + 8.0), row_y, small, small);
+    let gear = srow(0.0);
+    let menu = srow(1.0);
+    let fs = srow(2.0);
+    let music = srow(3.0);
+    let sfx = srow(4.0);
+
+    // The gear's dropdown rows open downward beneath it.
     let opt_h = 42.0;
     let opt_w = 76.0_f64.max(small);
     let mut size_opts = [GuiRect::default(); 4];
     for (i, slot) in size_opts.iter_mut().enumerate() {
-        slot.x = lcx - opt_w / 2.0;
+        slot.x = gear.x;
         slot.y = gear.y - (i as f64 + 1.0) * (opt_h + 6.0);
         slot.width = opt_w;
         slot.height = opt_h;
@@ -347,7 +351,7 @@ pub(crate) fn touch_rects(w: f64, h: f64, size: TouchSize) -> TouchRects {
     let right_hit = GuiRect::new(mid_l, 0.0, lr_edge - mid_l, l_top);
     let mid_r = thrust.x + pair + pair_gap / 2.0;
     let t_left = (thrust.x - ext).max(lr_edge);
-    let t_top = (PAD + pair + overshoot).min(row_fs - 2.0).min(h);
+    let t_top = (PAD + pair + overshoot).min(h);
     let f_top = (PAD + pair + overshoot).min(shield.y - 2.0).min(h);
     let thrust_hit = GuiRect::new(t_left, 0.0, mid_r - t_left, t_top);
     let fire_hit = GuiRect::new(mid_r, 0.0, w - mid_r, f_top);
