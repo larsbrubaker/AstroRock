@@ -28,7 +28,6 @@ const FA_EXPAND: &str = "\u{f065}";
 const FA_COMPRESS: &str = "\u{f066}";
 const FA_SHIELD: &str = "\u{f132}";
 const FA_CROSSHAIRS: &str = "\u{f05b}";
-const FA_BARS: &str = "\u{f0c9}";
 const FA_ROTATE_LEFT: &str = "\u{f0e2}";
 const FA_ROTATE_RIGHT: &str = "\u{f01e}";
 const FA_ROCKET: &str = "\u{f135}";
