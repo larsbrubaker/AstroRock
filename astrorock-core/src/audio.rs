@@ -293,7 +293,16 @@ pub trait AudioSink {
     /// stream, `CStreamSoundSetVolume` for the music). Called every
     /// pump; sinks may early-out on unchanged values.
     fn set_volumes(&mut self, _master: f32, _music: f32) {}
+    /// The spikeball charge whine (`pSoundCharging[slot]`): `Some` =
+    /// loop [`CHARGE_BYTES`] at `rate` (1.0 = native pitch; the game
+    /// ramps it every beat via `SetFrequency((f>>6)+f)`), `None` =
+    /// stop that slot's loop (a new charge restarts the sample).
+    /// Called every pump per slot.
+    fn set_charge(&mut self, _slot: usize, _rate: Option<f32>) {}
 }
+
+/// `rSpikeBallChargeSnd` — the looping charge whine sample.
+pub const CHARGE_BYTES: &[u8] = include_bytes!("../../assets/sfx/spkchrg.mp3");
 
 /// `PausedSoundPlayer`: one pending voice slot with a countdown —
 /// a newer request replaces whatever was waiting, and playback stops

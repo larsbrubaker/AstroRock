@@ -52,6 +52,10 @@ pub struct WebAudio {
     /// Config Sound slider fractions on top of the headroom.
     master: f32,
     music_vol: f64,
+    /// The decoded charge-whine sample + one looping node per
+    /// spikeball while it charges.
+    charge_buf: Rc<RefCell<Option<AudioBuffer>>>,
+    charges: Vec<Option<AudioBufferSourceNode>>,
 }
 
 /// Relative to the page, staged by demo/sync-assets.ts.
@@ -93,6 +97,17 @@ impl WebAudio {
                 }
             });
         }
+        let charge_buf: Rc<RefCell<Option<AudioBuffer>>> = Rc::new(RefCell::new(None));
+        {
+            let ctx = ctx.clone();
+            let charge_buf = charge_buf.clone();
+            wasm_bindgen_futures::spawn_local(async move {
+                match decode(&ctx, astrorock_core::audio::CHARGE_BYTES).await {
+                    Ok(buf) => *charge_buf.borrow_mut() = Some(buf),
+                    Err(err) => warn_decode("charge", &err),
+                }
+            });
+        }
 
         let music = HtmlAudioElement::new_with_src(&music_src(0)).ok();
         if let Some(el) = &music {
@@ -131,6 +146,8 @@ impl WebAudio {
             swallow: Closure::new(|_| {}),
             master: 1.0,
             music_vol: 1.0,
+            charge_buf,
+            charges: Vec::new(),
         })
     }
 
@@ -237,6 +254,32 @@ impl AudioSink for WebAudio {
         self.sfx_gain.gain().set_value(SFX_VOLUME * master);
         if let Some(el) = &self.music {
             el.set_volume(MUSIC_VOLUME * music);
+        }
+    }
+
+    fn set_charge(&mut self, slot: usize, rate: Option<f32>) {
+        if self.charges.len() <= slot {
+            self.charges.resize_with(slot + 1, || None);
+        }
+        match rate {
+            Some(rate) => {
+                if self.charges[slot].is_none() {
+                    self.ensure_running();
+                    let buf = self.charge_buf.borrow().clone();
+                    if let Some(buf) = buf {
+                        self.charges[slot] = self.start_source(&buf, true);
+                    }
+                }
+                if let Some(node) = &self.charges[slot] {
+                    node.playback_rate().set_value(rate);
+                }
+            }
+            None => {
+                if let Some(node) = self.charges[slot].take() {
+                    let _ = web_sys::AudioScheduledSourceNode::stop(&node);
+                    let _ = node.disconnect();
+                }
+            }
         }
     }
 }

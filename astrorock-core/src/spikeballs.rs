@@ -29,7 +29,7 @@ use crate::sequence;
 use crate::sprite::{Sprite, SpriteBlit};
 use crate::virtual_frame::VirtualFrame;
 
-const MAX_SPIKEBALLS: usize = 5;
+pub const MAX_SPIKEBALLS: usize = 5;
 const NUM_SURROUND_EXPLOS: u32 = 6;
 /// `SPIKEBALLCOLLIDEDAMAGE`.
 pub const SPIKEBALL_COLLIDE_DAMAGE: u32 = 50;
@@ -111,6 +111,10 @@ pub struct SpikeBalls {
     attacking: [Attack; MAX_SPIKEBALLS],
     do_bang: [bool; MAX_SPIKEBALLS],
     attack_pause: [u32; MAX_SPIKEBALLS],
+    /// The charge whine's frequency per ball (`pSoundCharging[i]`,
+    /// audio-only — no RNG, no sim effect): 22050 at charge start,
+    /// `(f >> 6) + f` per charging beat.
+    charge_freq: [u32; MAX_SPIKEBALLS],
     pub num_spikeballs: u32,
     max_spikeballs: u32,
     cur_type: u32,
@@ -164,6 +168,7 @@ impl SpikeBalls {
             attacking: [Attack::None; MAX_SPIKEBALLS],
             do_bang: [false; MAX_SPIKEBALLS],
             attack_pause: [0; MAX_SPIKEBALLS],
+            charge_freq: [22050; MAX_SPIKEBALLS],
             num_spikeballs: 0,
             max_spikeballs: 0,
             cur_type: 0,
@@ -241,6 +246,19 @@ impl SpikeBalls {
         for i in 0..MAX_SPIKEBALLS {
             self.attacking[i] = Attack::None;
             self.do_bang[i] = false;
+            // `pSoundCharging[i]->Stop(); SetFrequency(22050)`.
+            self.charge_freq[i] = 22050;
+        }
+    }
+
+    /// The charge whine's playback rate for ball `i` — `Some` while
+    /// it is charging (1.0 = the sample's native pitch, rising every
+    /// beat), `None` otherwise (sink stops the loop).
+    pub fn charge_rate(&self, i: usize) -> Option<f32> {
+        if self.pool[i].visible && self.attacking[i] == Attack::Charging {
+            Some(self.charge_freq[i] as f32 / 22050.0)
+        } else {
+            None
         }
     }
 
@@ -267,14 +285,18 @@ impl SpikeBalls {
                 Attack::Open => {
                     if cur_frame == 69 {
                         self.pool[i].frame_advance = 0.0;
-                        // Charge whine starts here (audio phase:
-                        // rSpikeBallChargeSnd with a rising ramp).
+                        // `pSoundCharging[i]->Play(); SetFrequency(22050)`
+                        // — the whine starts at native pitch.
+                        self.charge_freq[i] = 22050;
                         self.attack_pause[i] = self.attack_pause_delay;
                         self.attacking[i] = Attack::Charging;
                     }
                 }
                 Attack::Charging => {
                     self.attack_pause[i] -= 1;
+                    // `SetFrequency((f >> 6) + f)` — the rising ramp.
+                    let f = self.charge_freq[i];
+                    self.charge_freq[i] = (f >> 6) + f;
                     self.pool[i].x_delta = 0.0;
                     self.pool[i].y_delta = 0.0;
                     if self.attack_pause[i] == 0 {
