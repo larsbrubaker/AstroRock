@@ -252,7 +252,6 @@ impl Widget for TitleScreen {
             self.game.sfx_on,
             touch_ui,
             &self.icons,
-            &self.text_font,
         );
         self.music_btn = layout.music_btn;
         self.sfx_btn = layout.sfx_btn;
@@ -277,6 +276,21 @@ impl Widget for TitleScreen {
             dw,
             dh,
         );
+
+        // Touch controls draw LAST — the translucent plates sit on
+        // top of the playfield they may overlap.
+        if let Some(ui) = touch_ui {
+            chrome::paint_touch_overlay(
+                ctx,
+                w,
+                h,
+                self.game.music_on,
+                self.game.sfx_on,
+                ui,
+                &self.icons,
+                &self.text_font,
+            );
+        }
     }
 
     fn on_event(&mut self, event: &Event) -> EventResult {
