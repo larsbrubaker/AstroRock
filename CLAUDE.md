@@ -14,6 +14,11 @@ The original C++ is NOT in this repo and is never published:
   music, headerless 22050 Hz mono 16-bit PCM), loose `ART/`, `SOUND/`,
   `Music/`, `demo/` asset trees.
 - `C:\Development\Backups\2097-05\AstroRock` — the shipped-game backup.
+  NOT present on this machine. The working reference is instead
+  `C:\Development\AstroRock-headless` — a headless x86 rebuild of the
+  1997 sim (Burgerlib stubbed, platform files no-op'd) that traces
+  per-beat RNG sync and checksums; `cppbuild\build.ps1` reproduces it
+  from the read-only source tree. Also local-only, never committed.
 
 Always read the actual C++ source when porting a function — never work
 from memory of "how asteroids games work". When two files disagree, the
