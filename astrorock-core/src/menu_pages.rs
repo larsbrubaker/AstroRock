@@ -124,7 +124,7 @@ impl Menu {
         } else {
             self.new_high_text.clone()
         };
-        let name = if self.flash % 2 == 0 {
+        let name = if self.flash.is_multiple_of(2) {
             format!("-{shown}-")
         } else {
             format!(" {shown} ")
