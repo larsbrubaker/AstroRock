@@ -6,13 +6,18 @@ default-members = ["astrorock-core", "astrorock-native"]
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
-rust-version = "1.78"
+rust-version = "1.87"
 authors = ["Lars Brubaker <larsbrubaker@matterhackers.com>"]
 license = "MIT"
 repository = "https://github.com/larsbrubaker/AstroRock"
 
 [workspace.dependencies]
-agg-gui = "0.4"
+agg-gui = "0.5"
+# Published native shell (winit event loop + wgpu present + input plumbing).
+agg-gui-shell = "0.5"
+# The browser shell (`web_shell`: canvas sizing, rAF loop, DOM input) has no
+# published crate yet — astrorock-wasm still takes it from the repo-only
+# demo-wgpu shim, which re-exports agg-gui-wgpu underneath.
 demo-wgpu = { path = "../agg-gui/demo-wgpu", default-features = false }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -26,12 +31,18 @@ web-time = "1"
 # ---------------------------------------------------------------------------
 [patch.crates-io]
 agg-gui = { path = "../agg-gui/agg-gui" }
+agg-gui-shell = { path = "../agg-gui/agg-gui-shell" }
 
 # ---------------------------------------------------------------------------
 # Optimize dependencies in debug builds. The agg-rust software rasterizer is
 # expensive unoptimized — without this dev frame time drops sharply. Mirrors
-# agg-gui's own workspace profile.
+# agg-gui's own workspace profile. The renderer's inlined hot path
+# monomorphizes into our crates, so the workspace itself needs opt-level 1
+# too (agg-gui porting_update.md step 3).
 # ---------------------------------------------------------------------------
+[profile.dev]
+opt-level = 1
+
 [profile.dev.package."*"]
 opt-level = 2
 
