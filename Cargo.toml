@@ -12,9 +12,9 @@ license = "MIT"
 repository = "https://github.com/larsbrubaker/AstroRock"
 
 [workspace.dependencies]
-agg-gui = "0.5"
+agg-gui = "0.5.1"
 # Published native shell (winit event loop + wgpu present + input plumbing).
-agg-gui-shell = "0.5.1"
+agg-gui-shell = "0.5.2"
 # The browser shell (`web_shell`: canvas sizing, rAF loop, DOM input) has no
 # published crate yet — astrorock-wasm still takes it from the repo-only
 # demo-wgpu shim, which re-exports agg-gui-wgpu underneath.
